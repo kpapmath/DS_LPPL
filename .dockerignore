@@ -1,0 +1,9 @@
+.venv
+.git
+.idea
+data
+reports
+**/__pycache__
+**/.ipynb_checkpoints
+.pytest_cache
+.ruff_cache

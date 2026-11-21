@@ -1,0 +1,129 @@
+name: lppl
+
+x-app-env: &app-env
+  POSTGRES_USER: ${POSTGRES_USER:-lppl}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lppl}
+  POSTGRES_DB: ${POSTGRES_DB:-lppl}
+  POSTGRES_HOST: db          # service name inside the compose network
+  POSTGRES_PORT: "5432"      # container port, not the host mapping
+  LPPL_GIT_SHA: ${LPPL_GIT_SHA:-}   # exported by the Makefile (.git is not in the image)
+
+services:
+  db:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lppl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lppl}
+      POSTGRES_DB: ${POSTGRES_DB:-lppl}
+    ports:
+      - "${POSTGRES_PORT:-5442}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: lppl-app:0.1.0
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data            # CSV snapshots survive the container
+      - ./config:/app/config:ro
+      - ./reports:/app/reports
+      - ./notebooks:/app/notebooks  # executed notebooks are written back to the host
+      - ./docs/figures:/app/docs/figures  # figures saved by notebook 03 for the docs
+    profiles: ["app"]
+
+  jupyter:
+    image: lppl-app:0.1.0
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser",
+                 "--allow-root", "--ServerApp.root_dir=/app/notebooks",
+                 "--IdentityProvider.token=${JUPYTER_TOKEN:-lppl}"]
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./docs/figures:/app/docs/figures
+    profiles: ["notebooks"]
+
+  # ------------------------------------------------------------------ tuning (docs/tuning.md)
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/tune.Dockerfile
+    image: lppl-tune:0.1.0
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    # creates the `mlflow` / `optuna` databases if missing, then serves the tracking UI + API
+    entrypoint: ["sh", "-c", "python -m lppl.tuning.stores && exec mlflow server
+      --backend-store-uri postgresql+psycopg://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@db:5432/mlflow
+      --artifacts-destination /mlartifacts --serve-artifacts
+      --host 0.0.0.0 --port 5000
+      --allowed-hosts 'mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*'"]
+    ports:
+      - "${MLFLOW_PORT:-5050}:5000"
+    volumes:
+      - mlartifacts:/mlartifacts
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    profiles: ["tune"]
+
+  tune:
+    image: lppl-tune:0.1.0
+    environment:
+      <<: *app-env
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      db:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    shm_size: "2gb"               # Ray's object store lives in /dev/shm
+    volumes:
+      - ./data:/app/data          # benchmark cache, study outputs, ray_results
+      - ./config:/app/config      # read config/*.yaml, write exported tuned configs
+    profiles: ["tune"]
+
+  optuna-dashboard:
+    image: lppl-tune:0.1.0
+    environment: *app-env
+    depends_on:
+      mlflow:
+        condition: service_healthy   # guarantees the optuna database exists
+    entrypoint: ["sh", "-c", "exec optuna-dashboard --host 0.0.0.0 --port 8080
+      postgresql+psycopg://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@db:5432/optuna"]
+    ports:
+      - "${OPTUNA_DASHBOARD_PORT:-8081}:8080"
+    profiles: ["tune"]
+
+  adminer:
+    image: adminer:4.8.1
+    ports:
+      - "8080:8080"
+    depends_on: [db]
+    profiles: ["tools"]
+
+volumes:
+  pgdata:
+  mlartifacts:
