@@ -375,6 +375,6 @@ def _figures(spec: StudySpec, trials: pd.DataFrame, summary: dict, payload):
         ax.invert_yaxis()
         ax.set_xlabel("average precision for forward-drawdown events")
         ax.set_title("Does the detector beat the base rate out of sample?")
-        ax.legend(loc="lower right")
+        ax.legend(loc="upper right")
         figs.append(("ap_train_vs_valid.png", fig))
     return figs

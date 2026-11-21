@@ -16,6 +16,7 @@ Contents
 7. Procedure: step by step
 8. Reproducibility
 9. Interpreting results, and the pitfalls
+10. First results (2026-11-21)
 
 ---
 
@@ -154,6 +155,13 @@ a trial takes 4 ms, so Ray's per-trial scheduling overhead dominates. Measured: 
 about 7 minutes with Ray, while 300 trials took about 2.5 minutes with Optuna, most of it
 MLflow logging. Both are supported for both studies.
 
+**ASHA and the Optuna study.** When ASHA stops a Ray trial early, `OptunaSearch` tells the
+study the *last reported* (partial-run) loss and marks the trial COMPLETE. TPE and the logged
+parameter importances therefore see some partial values. They are unbiased running means over
+random window chunks, but noisier. `lppl` selects the **best configuration only among fully
+evaluated trials** (`training_iteration == chunks`), and labels stopped trials `STOPPED` in
+`trials.csv`. With the Optuna backend, pruned trials are marked PRUNED and excluded everywhere.
+
 **Why TPE.** The spaces are small (11–12 parameters), mixed (int, float, categorical, conditional)
 and the objective is noisy. TPE handles all of this, and the first 10 random trials give it a
 start. With a few hundred trials, random search is a reasonable alternative and easy to swap in
@@ -259,3 +267,55 @@ Postgres and continues sampling.
 * **GA study scope.** The GA is tuned on 48 windows. Check that a tuned GA does not
   degrade on the full scan before adopting it (rescan, then compare `lppl_fits.sse` with the
   default run on the same windows).
+
+## 10. First results (2026-11-21)
+
+Both studies were run in the Docker stack. They are visible in MLflow (`lppl-ga`, `lppl-indicator`)
+and in optuna-dashboard. The local copies are in `data/tuning/<study>/`.
+
+### GA study `ga-ray-v1`: Ray Tune + ASHA, 30 trials, 2 in parallel, 6.5 minutes
+
+| | current GA (40 × 30, polish 200) | tuned GA |
+|---|---|---|
+| loss | 1.121 | **0.576** |
+| mean excess SSE over the oracle | 0.448 % | **0.150 %** |
+| hit rate (within 0.01 % of the oracle) | 89.6 % | 89.6 % |
+| objective evaluations per fit | 1,346 | **853 (−37 %)** |
+| median `tc` distance from the oracle | 0 days | 0 days |
+
+![GA quality vs cost](figures/tuning_ga_quality_vs_cost.png)
+
+* ASHA stopped 16 of the 30 trials early: 10 after the first benchmark chunk, 6 after the second.
+* Tuned parameters: population 91, **generations 6**, elite 1, tournament 2, crossover 0.98,
+  BLX-α 0.51, mutation rate 0.34, σ 0.22, decay 0.93, patience 16, polish on with **375
+  iterations**. The search moved work from many GA generations into one broad generation plus a
+  longer Nelder–Mead polish. This is consistent with notebook 04, which found the polish to be
+  the dominant factor.
+* Most important parameters (fANOVA): generations 0.35, elite 0.15, patience 0.13, BLX-α 0.11.
+* **Status:** promising, but not yet adopted. Before switching `config/default.yaml`, rescan the
+  case studies with `data/tuning/ga-ray-v1/tuned_config.yaml` and compare the SSE per window with
+  the default run (§9, GA study scope).
+
+### Detector study `indicator-optuna-v1`: Optuna TPE, 300 trials, about 2.5 minutes
+
+| average precision (event: 3-month drawdown ≥ 1.5 σ√H) | train 2019–2023 | validation 2024– |
+|---|---|---|
+| base rate (random score) | 0.147 | 0.116 |
+| naive momentum baseline | 0.147 | **0.132** |
+| current detector | 0.156 | 0.120 |
+| tuned detector | **0.230** | 0.115 |
+
+![train vs validation](figures/tuning_indicator_ap.png)
+
+* The tuned filters (`m ∈ [0.30, 0.88]`, `ω ∈ [1.7, 10.9]`, ≥ 4.65 oscillations, `tc` margin
+  14 days, window 150–750) raise **train** AP by 47 %, but do **not** transfer to the
+  validation period. There they fall below the base rate.
+* Neither the current nor the tuned LPPLS detector beats the naive momentum score out of
+  sample for this event definition.
+* **Conclusion:** do not adopt the tuned filters. As a *forward 3-month drawdown predictor*,
+  the LPPLS confidence has no demonstrable out-of-sample skill on this universe and period. This
+  agrees with the published criticism (`methodology.md` §9) and with the case studies, where the
+  signal was informative about *regimes* and `tc` windows more than about the timing of
+  drawdowns. The tuning framework is what makes this conclusion measurable and reproducible. Next
+  steps: walk-forward splits, other event definitions (for example peak-to-trough over 6 months), and
+  the denser scan (`windows.step: 5`) that is currently running.

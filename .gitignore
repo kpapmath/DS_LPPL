@@ -8,6 +8,7 @@ __pycache__/
 .hypothesis/
 .coverage
 htmlcov/
+docs/figures
 .ipynb_checkpoints/
 
 
@@ -21,3 +22,6 @@ reports/
 # build artefacts
 build/
 dist/
+
+*.xml
+*.iml
