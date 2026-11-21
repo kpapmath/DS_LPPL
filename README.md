@@ -68,6 +68,7 @@ make jupyter            # http://localhost:8888 (token: lppl)
 
 ## Documentation
 
+- [docs/how_the_model_works.md](docs/how_the_model_works.md): **start here**, a plain-language guide to how the model works, how it is validated and its prediction horizon, with examples from the current run.
 - [docs/methodology.md](docs/methodology.md): extended review of LPPLS, its estimation, the GA, and the criticisms.
 - [docs/tuning.md](docs/tuning.md): hyperparameter-tuning methodology (Optuna, Ray Tune, MLflow), the procedure and the pitfalls.
 - [docs/model_presentation.md](docs/model_presentation.md): presentation of the model and the results.

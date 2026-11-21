@@ -43,6 +43,15 @@ def _installed_sans() -> list[str]:
     return [n for n in _SANS_CANDIDATES if n in installed] or ["DejaVu Sans"]
 
 
+def plain_log_axis(ax) -> None:
+    """Show log-scale ticks as plain numbers (300, not 3×10²)."""
+    from matplotlib.ticker import FuncFormatter
+
+    fmt = FuncFormatter(lambda v, _: f"{v:,.0f}" if v >= 10 else f"{v:g}")
+    ax.yaxis.set_major_formatter(fmt)
+    ax.yaxis.set_minor_formatter(fmt)
+
+
 def apply_style() -> None:
     mpl.rcParams.update({
         "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
@@ -70,6 +79,7 @@ def price_and_confidence(px: pd.Series, ind: pd.DataFrame, title: str, axes=None
     ax_p.plot(px.index, px.to_numpy(), color=INK, lw=1.1)
     if log:
         ax_p.set_yscale("log")
+        plain_log_axis(ax_p)
     ax_p.set_title(title)
     ax_p.set_ylabel("adj. close")
     if not ind.empty:
