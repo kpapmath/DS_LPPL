@@ -38,7 +38,10 @@
 | `pipeline.py` | orchestration: `ingest`, `scan`, `report`, `resolve_run` | everything above |
 | `cli.py` | Typer CLI | pipeline |
 | `viz.py` | matplotlib style and chart helpers for the notebooks | matplotlib |
-| `validation.py` | validation suite (`lppl validate`, notebook 05): skill, calibration, block bootstrap, placebo, robustness grid, timing, walk-forward, null model, backtest | tuning.detection (labels, AP), joblib; optuna optional |
+| `validation.py` | validation suite (`lppl validate`, notebook 05): skill, calibration, block bootstrap, placebo, robustness grid, timing, walk-forward, null model, backtest, label suite, `tc`-window test | tuning.detection (labels, AP), labels, joblib; optuna optional |
+| `labels.py` | pre-registered event labels (`drawdown_63/126`, `major_top_126`, `rally_end_126`), major-top detection, Holm adjustment | tuning.detection |
+| `signals.py` | refined LPPLS signals from stored fits (short scale, scale agreement, `tc` clustering, residual test, Lagrange window) and market features | model.lppls, labels |
+| `combined.py` | walk-forward nested logistic models (`lppl combine`, notebook 06): market vs + LPPLS vs + refined, log-loss with block-bootstrap intervals and Holm | signals, labels, scipy |
 | `tuning/*` | hyperparameter studies, see [tuning.md](tuning.md) | optuna, ray[tune], mlflow (lazy imports; only in the `lppl-tune` image) |
 
 The model and optimiser layers have **no I/O dependencies**. They can be unit-tested and
@@ -55,6 +58,14 @@ reused without a database.
    `db.finish_run` (or `failed` if an exception occurs).
 3. Notebooks and `lppl report` read `bubble_indicator` and `lppl_fits` for one run
    (default: the latest finished run labelled `default`).
+4. `lppl validate` reads one run's indicator (and its fits, for walk-forward and null model) plus
+   prices, and writes `reports/validation/<label>_<run>/` (CSV tables, `summary.json`, figures;
+   optionally an MLflow run).
+5. `scripts/full_pipeline.sh` (`make pipeline-full`) chains all of the above for the full-period
+   run: host scans and validation, with tuning in the `lppl-tune` image.
+6. `lppl combine` reads a long-scale run's fits and a short-scale run's indicator (same analysis
+   dates), builds `signals.build_features`, runs the walk-forward models and writes
+   `reports/combined/<label>_<run>/`. Nothing is written back to the database.
 
 ## Design decisions
 

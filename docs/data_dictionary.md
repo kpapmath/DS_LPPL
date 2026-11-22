@@ -14,8 +14,8 @@ psql "postgresql://lppl:lppl@localhost:5442/lppl"
 |---|---|---|
 | `ticker` | varchar PK | Yahoo symbol (`^GSPC`, `AAPL`, …) |
 | `name` | text | display name |
-| `grp` | varchar | `index` \| `mag7` \| `extra` |
-| `asset_type` | varchar | `index` \| `equity` |
+| `grp` | varchar | `index` \| `mag7` \| `extra` \| `bubble` |
+| `asset_type` | varchar | `index` \| `equity` \| `etf` \| `crypto` \| `commodity` |
 
 ## `prices`
 
@@ -54,7 +54,7 @@ One row per `lppl scan` invocation.
 | `run_id` | uuid (text) PK | |
 | `created_at`, `finished_at` | timestamptz | |
 | `status` | varchar | `running` → `finished` \| `failed` |
-| `label` | text | e.g. `default`, `quick`, `case:dotcom` |
+| `label` | text | e.g. `default`, `quick`, `case:dotcom`, `pipeline-base`, `bubbles`, `bubbles-short` (the labels used in the docs are listed in reproducibility.md) |
 | `seed` | int | master seed |
 | `git_sha` | varchar | commit of the code (null if not a git checkout) |
 | `package_version` | varchar | `lppl.__version__` |
@@ -108,3 +108,13 @@ order by pos_conf desc limit 20;
 select ticker, avg(qualified::int) as q_rate, count(*) from lppl_fits
 where run_id = :run group by ticker order by q_rate desc;
 ```
+
+## Report files (not in the database)
+
+`lppl validate` and `lppl combine` write their results as files, not tables:
+
+| folder | written by | main files |
+|---|---|---|
+| `reports/validation/<label>_<run>/` | `lppl validate` | `summary.json`, `skill.csv`, `labels.csv`, `tc_window.csv`, `events.csv`, … ([validation.md](validation.md) §3) |
+| `reports/combined/<label>_<run>/` | `lppl combine` | `features.csv` (one row per ticker × date: LPPLS signals, market features, labels), `oos.csv`, `metrics.csv`, `increments.csv`, `per_year.csv`, `standalone.csv`, `coefficients.csv`, `summary.json` ([combined_model.md](combined_model.md) §3) |
+

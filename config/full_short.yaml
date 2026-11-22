@@ -1,0 +1,102 @@
+# SHORT-SCALE scan of the full-period pipeline: config/full_tuned.yaml with 8 windows of
+# 40..180 days (written by scripts/full_pipeline.sh).
+seed: 42
+data:
+  start: '1985-01-01'
+  end: null
+  price_field: adj_close
+  snapshot_dir: data/snapshots
+  instruments:
+  - ticker: ^GSPC
+    name: S&P 500
+    group: index
+    asset_type: index
+  - ticker: ^IXIC
+    name: NASDAQ Composite
+    group: index
+    asset_type: index
+  - ticker: AAPL
+    name: Apple
+    group: mag7
+    asset_type: equity
+  - ticker: MSFT
+    name: Microsoft
+    group: mag7
+    asset_type: equity
+  - ticker: GOOGL
+    name: Alphabet
+    group: mag7
+    asset_type: equity
+  - ticker: AMZN
+    name: Amazon
+    group: mag7
+    asset_type: equity
+  - ticker: NVDA
+    name: NVIDIA
+    group: mag7
+    asset_type: equity
+  - ticker: META
+    name: Meta Platforms
+    group: mag7
+    asset_type: equity
+  - ticker: TSLA
+    name: Tesla
+    group: mag7
+    asset_type: equity
+  - ticker: AVGO
+    name: Broadcom
+    group: extra
+    asset_type: equity
+  - ticker: JPM
+    name: JPMorgan Chase
+    group: extra
+    asset_type: equity
+  - ticker: NFLX
+    name: Netflix
+    group: extra
+    asset_type: equity
+scan:
+  start: '1987-01-01'
+  end: null
+  step: 10
+  n_jobs: -1
+  method: ga
+windows:
+  min_len: 40
+  max_len: 180
+  step: 20
+bounds:
+  m:
+  - 0.01
+  - 1.0
+  omega:
+  - 1.0
+  - 50.0
+  tc_after: 0.5
+  tc_min_days: 1.0
+filters:
+  m_min: 0.1
+  m_max: 0.9
+  omega_min: 2.0
+  omega_max: 25.0
+  tc_before: 0.05
+  tc_after: 0.2
+  tc_margin_days: 3.0
+  damping_min: 0.5
+  oscillations_min: 2.5
+  max_rmse: null
+ga:
+  population_size: 91
+  generations: 6
+  elite: 1
+  tournament_size: 2
+  crossover_rate: 0.980666407753164
+  blx_alpha: 0.5085303123462986
+  mutation_rate: 0.3419337587196775
+  mutation_sigma: 0.21863092229693892
+  mutation_decay: 0.9333274219981481
+  mutation_sigma_min: 0.005
+  patience: 16
+  tol: 1.0e-06
+  polish: true
+  polish_maxiter: 375

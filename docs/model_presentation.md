@@ -184,11 +184,34 @@ non-tech control, shows the most persistent recent signal (0.3–0.4 from late A
 
 ---
 
+## 13. What the statistical tests say
+
+The case studies above are illustrations. The formal tests are in [validation.md](validation.md)
+and [combined_model.md](combined_model.md).
+
+| test | 12 US stocks, 2019–2026 | 12 US stocks, 1987–2026 | 16 burst-bubble assets, 1987–2026 |
+|---|---|---|---|
+| alarm followed by a large 3-month fall | 9.5 % (random date: 13.2 %) | 12.9 % (random date: 14.1 %) | **30 %** (random date: 16 %) |
+| timing beats a time-shifted placebo | no (p = 0.40) | no (p = 0.24) | **yes (p = 0.001)** |
+| higher confidence = more falls | no | no | **yes** (15 % → 20 % → 30 % → 37 %) |
+| fires more on real than on bubble-free prices | no (p = 0.18) | **yes (p = 0.004)** | **yes (p = 0.005)** |
+| pre-registered labels passing after Holm correction | 0 of 4 | 1 of 4 (major tops) | **3 of 4** |
+| top inside the predicted `tc` window | 0 of 20 | 0 of 78 | 2 of 66 (no better than permuted windows) |
+| improves a walk-forward forecast built on market features | no | no (0 of 6) | **no** (0 of 6 tests) |
+| refined signals (short scale, agreement, residual test, Lagrange) improve it | no | no | no |
+
+![combined model: out-of-sample gain per year](figures/combined_per_year_gain.png)
+
+**In one sentence:** LPPLS recognises bubble-shaped rallies on assets that really had bubbles,
+and its alarms roughly double the chance of a large fall. But it does not time the crash, and the
+information it adds over simple momentum, volatility and drawdown statistics is too small to
+improve an everyday forecast.
+
 ## Limitations (read before acting on any of this)
 
 - **`tc` is poorly identified.** Treat it as a window of weeks to months, not a date.
 - **False positives.** Strong secular trends can look like bubbles for months.
-- **No out-of-sample scoring here.** Four case studies and a handful of hits and misses are
-  illustrations, not a backtest. See `docs/methodology.md` §8–9 for a proper validation design.
+- **Case studies are illustrations.** The out-of-sample scoring is in §13, `docs/validation.md` and
+  `docs/combined_model.md`.
 - **Survivorship.** The Magnificent Seven are today's winners by construction.
 - **Not investment advice.**

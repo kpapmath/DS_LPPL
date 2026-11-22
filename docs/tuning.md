@@ -317,7 +317,8 @@ and in optuna-dashboard. The local copies are in `data/tuning/<study>/`.
 * Neither the current nor the tuned LPPLS detector beats the naive momentum score out of
   sample for this event definition.
 * **Conclusion:** do not adopt the tuned filters. As a *forward 3-month drawdown predictor*,
-  the LPPLS confidence has no demonstrable out-of-sample skill on this universe and period. This
+  the LPPLS confidence has no demonstrable out-of-sample skill on this universe and period (on
+  a burst-bubble universe it does; see validation.md §6). This
   agrees with the published criticism (`methodology.md` §9) and with the case studies, where the
   signal was informative about *regimes* and `tc` windows more than about the timing of
   drawdowns. The tuning framework is what makes this conclusion measurable and reproducible. Next
@@ -334,3 +335,20 @@ and in optuna-dashboard. The local copies are in `data/tuning/<study>/`.
 * **Detector study** (`indicator-pipeline-20261121`): it raised train AP from 0.156 to 0.230,
   but 2024+ AP fell from 0.120 to 0.115. It was **rejected** by the validated-adoption rule. This
   is the same over-fitting pattern as `indicator-optuna-v1`.
+
+### Full-period pipeline (2026-11-22)
+
+`make pipeline-full` repeated both studies on the 12 instruments over 1987–2026
+([validation.md](validation.md) §7).
+
+* **GA:** loss fell from 1.754 to 0.897 on a benchmark drawn from the whole period. It was
+  **adopted**, with the same settings as in the 2019+ run.
+* **Detector:** the 2024+ AP fell from 0.120 to 0.113 (train 1987–2023). It was **rejected**: a
+  third over-fitting result out of three.
+
+> **Correction (2026-11-22).** `n_windows_min`, the check that a detector setting keeps at least
+> `min_windows` windows, used to take the minimum over *all* dates. On long histories, the
+> earliest dates have only a few stored windows, so every setting was rejected. It now considers
+> only dates where the full stored window grid fits (`detection.min_windows_used`). The studies
+> above all used scans from 2019 with all 26 windows on every date, so they are unaffected.
+

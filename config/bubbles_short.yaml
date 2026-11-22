@@ -1,0 +1,120 @@
+# SHORT-SCALE scan of the burst-bubble universe (config/bubbles.yaml): identical except for the windows,
+# 8 windows of 40..180 trading days (the "short" scale of DS LPPLS, Sornette et al. 2015).
+# Analysis dates are counted back from the last day with the same step, so they align with the
+# long-scale scan. Used by the refined signal (docs/combined_model.md).
+seed: 42
+data:
+  start: '1985-01-01'
+  end: null
+  price_field: adj_close
+  snapshot_dir: data/snapshots
+  instruments:
+  - ticker: ^GSPC
+    name: S&P 500 (1987, 2000, 2007)
+    group: bubble
+    asset_type: index
+  - ticker: ^IXIC
+    name: NASDAQ Composite (dot-com 2000)
+    group: bubble
+    asset_type: index
+  - ticker: ^N225
+    name: Nikkei 225 (1989)
+    group: bubble
+    asset_type: index
+  - ticker: ^HSI
+    name: Hang Seng (1997, 2007, 2018)
+    group: bubble
+    asset_type: index
+  - ticker: 000001.SS
+    name: Shanghai Composite (2007, 2015)
+    group: bubble
+    asset_type: index
+  - ticker: BTC-USD
+    name: Bitcoin (2017, 2021)
+    group: bubble
+    asset_type: crypto
+  - ticker: GC=F
+    name: Gold futures (2011)
+    group: bubble
+    asset_type: commodity
+  - ticker: CSCO
+    name: Cisco (dot-com)
+    group: bubble
+    asset_type: equity
+  - ticker: QCOM
+    name: Qualcomm (dot-com)
+    group: bubble
+    asset_type: equity
+  - ticker: ORCL
+    name: Oracle (dot-com)
+    group: bubble
+    asset_type: equity
+  - ticker: ARKK
+    name: ARK Innovation ETF (2021)
+    group: bubble
+    asset_type: etf
+  - ticker: GME
+    name: GameStop (2021)
+    group: bubble
+    asset_type: equity
+  - ticker: ZM
+    name: Zoom (2020)
+    group: bubble
+    asset_type: equity
+  - ticker: BABA
+    name: Alibaba (2018, 2020)
+    group: bubble
+    asset_type: equity
+  - ticker: NVDA
+    name: NVIDIA (2021, 2024)
+    group: bubble
+    asset_type: equity
+  - ticker: TSLA
+    name: Tesla (2021)
+    group: bubble
+    asset_type: equity
+scan:
+  start: '1987-01-01'
+  end: null
+  step: 10
+  n_jobs: -1
+  method: ga
+windows:
+  min_len: 40
+  max_len: 180
+  step: 20
+bounds:
+  m:
+  - 0.01
+  - 1.0
+  omega:
+  - 1.0
+  - 50.0
+  tc_after: 0.5
+  tc_min_days: 1.0
+filters:
+  m_min: 0.1
+  m_max: 0.9
+  omega_min: 2.0
+  omega_max: 25.0
+  tc_before: 0.05
+  tc_after: 0.2
+  tc_margin_days: 3.0
+  damping_min: 0.5
+  oscillations_min: 2.5
+  max_rmse: null
+ga:
+  population_size: 91
+  generations: 6
+  elite: 1
+  tournament_size: 2
+  crossover_rate: 0.980666407753164
+  blx_alpha: 0.5085303123462986
+  mutation_rate: 0.3419337587196775
+  mutation_sigma: 0.21863092229693892
+  mutation_decay: 0.9333274219981481
+  mutation_sigma_min: 0.005
+  patience: 16
+  tol: 1.0e-06
+  polish: true
+  polish_maxiter: 375

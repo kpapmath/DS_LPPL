@@ -69,6 +69,15 @@ class BacktestSettings(BaseModel):
     placebo_shifts: int = 200
 
 
+class LabelSuiteSettings(BaseModel):
+    names: list[str] = ["drawdown_63", "drawdown_126", "major_top_126", "rally_end_126"]
+    k_sigma: float = 1.5
+    top_lookback: int = 252
+    reps: int = 1000              # placebo shifts and bootstrap replications per label
+    tc_test: bool = True          # are major tops inside the predicted tc window?
+    tc_reps: int = 2000
+
+
 class ValidationSettings(BaseModel):
     seed: int = 0
     alarm_threshold: float = 0.3
@@ -82,6 +91,7 @@ class ValidationSettings(BaseModel):
     walk_forward: WalkForwardSettings = WalkForwardSettings()
     null_model: NullSettings = NullSettings()
     backtest: BacktestSettings = BacktestSettings()
+    labels: LabelSuiteSettings = LabelSuiteSettings()
 
 
 def load_validation_config(path: str | Path | None = None) -> ValidationSettings:
@@ -272,7 +282,7 @@ def walk_forward(fits: pd.DataFrame, prices: pd.DataFrame, run_cfg: AppConfig,
     test = the year's labelled dates. Reports the stored detector (as scanned), a detector
     re-tuned on the train dates only (if optuna is available) and the baselines."""
     from lppl.model.indicator import WindowConfig
-    from lppl.tuning.detection import build_detection_data, confidence
+    from lppl.tuning.detection import build_detection_data, confidence, min_windows_used
     from lppl.tuning.settings import (
         IndicatorStudySettings,
         default_params,
@@ -298,7 +308,7 @@ def walk_forward(fits: pd.DataFrame, prices: pd.DataFrame, run_cfg: AppConfig,
                                                  max_len=data.max_len, step=data.grid_step),
                             data.grid_step)
         c, n = confidence(data, filt, win.min_len, win.max_len, win.step)
-        return c, (n[n > 0].min() if (n > 0).any() else 0)
+        return c, min_windows_used(data, n)
 
     conf_default, _ = conf_for(defaults)
     try:
@@ -518,6 +528,13 @@ def run_validation(engine, run_id: str, label: str = "", settings: ValidationSet
     if run_null and s.null_model.paths > 0:
         rep.tables["null_model"] = null_model(fits, prices, run_cfg, s, n_jobs=n_jobs)
     rep.tables["backtest"], rep.curves = backtest(ev, prices, s)
+    if s.labels.names:
+        rep.tables["labels"] = label_suite(ev, prices, s, step_rows)
+    if s.labels.tc_test:
+        res, ep = tc_window_test(ev, prices, s)
+        rep.tables["tc_window"] = pd.DataFrame([res])
+        rep.tables["tc_episodes"] = ep
+    add_holm(rep)
     rep.summary = summarize(rep)
     return rep
 
@@ -574,6 +591,19 @@ def summarize(rep: ValidationReport) -> dict[str, Any]:
     for (period, strat), r in b.iterrows():
         for c in ("ann_return", "sharpe", "max_drawdown"):
             out[f"backtest.{period}.{strat}.{c}"] = _num(r[c])
+    if "labels" in t and not t["labels"].empty:
+        for _, r in t["labels"].iterrows():
+            for c in ("n", "events", "base_rate", "ap_lppl", "ap_momentum", "lift_lppl",
+                      "p_placebo", "p_holm", "precision_at_alarm"):
+                if c in r:
+                    out[f"labels.{r['label']}.{c}"] = _num(r[c])
+            out[f"labels.{r['label']}.ci.lppl_minus_base"] = [_num(r["lppl_minus_base_ci_low"]),
+                                                              _num(r["lppl_minus_base_ci_high"])]
+            out[f"labels.{r['label']}.ci.lppl_minus_momentum"] = [
+                _num(r["lppl_minus_momentum_ci_low"]), _num(r["lppl_minus_momentum_ci_high"])]
+    if "tc_window" in t and not t["tc_window"].empty:
+        for c, v in t["tc_window"].iloc[0].items():
+            out[f"tc_window.{c}"] = _num(v)
     out["verdict"] = verdict(out)
     return out
 
@@ -594,6 +624,10 @@ def verdict(s: dict) -> dict[str, bool | None]:
         "fires_more_on_real_than_bubble_free_prices": (
             None if s.get("null.p_value_real_gt_null") is None
             else bool(s["null.p_value_real_gt_null"] < 0.05)),
+        **{f"beats_placebo_{k.split('.')[1]}_holm": bool(v < 0.05)
+           for k, v in s.items() if k.startswith("labels.") and k.endswith(".p_holm") and v is not None},
+        "tops_inside_tc_window_holm": (None if s.get("tc_window.p_holm") is None
+                                       else bool(s["tc_window.p_holm"] < 0.05)),
     }
 
 
@@ -614,6 +648,104 @@ def _num(v):
     except (TypeError, ValueError):
         return None
     return None if not np.isfinite(f) else f
+
+
+# --------------------------------------------------------------------------- 10. label suite
+def label_suite(ev: pd.DataFrame, prices: pd.DataFrame, s: ValidationSettings,
+                min_shift_rows: int) -> pd.DataFrame:
+    """The skill tests (AP vs base rate and momentum, month-block bootstrap, time-shift
+    placebo) for each pre-registered label of ``lppl.labels``, with Holm-adjusted p-values."""
+    from lppl.labels import compute_labels
+
+    ls = s.labels
+    rows = []
+    for name in ls.names:
+        d = ev.copy()
+        for ticker, idx in d.groupby("ticker").groups.items():
+            d.loc[idx, "label"] = compute_labels(prices[ticker], d.loc[idx, "date"], name,
+                                                 ls.k_sigma, s.events.vol_window, ls.top_lookback)
+        lab = _labeled(d)
+        bs = block_bootstrap(d, ls.reps, s.seed).set_index(["split", "metric"])
+        pl = placebo_test(d, ls.reps, min_shift_rows, s.seed)
+        r = {"label": name, "n": len(lab), "events": int(lab["label"].sum()),
+             "base_rate": float(lab["label"].mean()),
+             "ap_lppl": average_precision(lab["label"], lab["conf"]),
+             "ap_momentum": average_precision(lab["label"], lab["momentum"]),
+             "placebo_mean": pl["placebo_mean"], "p_placebo": pl["p_value"]}
+        r["lift_lppl"] = r["ap_lppl"] / r["base_rate"] if r["base_rate"] else np.nan
+        for metric in ("lppl_minus_base", "lppl_minus_momentum"):
+            b = bs.loc[("all", metric)]
+            r[f"{metric}_ci_low"], r[f"{metric}_ci_high"] = b["ci_low"], b["ci_high"]
+        r.update({f"{k}_at_alarm": v for k, v in
+                  alarm_stats(lab["label"], lab["conf"], s.alarm_threshold).items()})
+        rows.append(r)
+    return pd.DataFrame(rows)
+
+
+def tc_window_test(ev: pd.DataFrame, prices: pd.DataFrame, s: ValidationSettings,
+                   gap_days: int = 45) -> tuple[dict[str, Any], pd.DataFrame]:
+    """Does a major top fall inside the predicted [tc_q25, tc_q75] window?
+
+    One row per alarm episode (its first alarm date). Placebo: the windows' offsets from the
+    alarm date are permuted across episodes, which keeps the alarm dates (inside rallies) and the
+    window widths and only breaks the link between an episode and *its* predicted crash time."""
+    from lppl.labels import top_dates
+
+    hot = ev[(ev["conf"] >= s.alarm_threshold) & ev["tc_q25"].notna()].sort_values(["ticker", "date"])
+    rows = []
+    for ticker, g in hot.groupby("ticker"):
+        px = prices[ticker].dropna()
+        tops = top_dates(px, k_sigma=s.labels.k_sigma, lookback=s.labels.top_lookback,
+                         vol_window=s.events.vol_window)
+        last_decidable = px.index[-1] - pd.Timedelta(days=183)  # tops need 126 days to confirm
+        for _, e in g.groupby((g["date"].diff().dt.days > gap_days).cumsum()):
+            f = e.iloc[0]
+            q25, q75 = pd.Timestamp(f["tc_q25"]), pd.Timestamp(f["tc_q75"])
+            if q75 > last_decidable:
+                continue
+            rows.append({"ticker": ticker, "alarm_date": f["date"], "conf": f["conf"],
+                         "tc_q25": q25, "tc_q75": q75,
+                         "lo_days": (q25 - f["date"]).days, "hi_days": (q75 - f["date"]).days,
+                         "hit": bool(((tops >= q25) & (tops <= q75)).any()),
+                         "_tops": tops.to_numpy("datetime64[D]").astype("int64")})
+    ep = pd.DataFrame(rows)
+    if ep.empty:
+        return {"episodes": 0}, ep
+    t2 = pd.DatetimeIndex(ep["alarm_date"]).to_numpy("datetime64[D]").astype("int64")  # in days
+    lo, hi = ep["lo_days"].to_numpy(), ep["hi_days"].to_numpy()
+    tops = ep["_tops"].tolist()
+
+    def hit_rate(perm):
+        a, b = t2 + lo[perm], t2 + hi[perm]
+        return np.mean([((tp >= a[i]) & (tp <= b[i])).any() for i, tp in enumerate(tops)])
+
+    rng = np.random.default_rng(s.seed)
+    actual = hit_rate(np.arange(len(ep)))
+    dist = np.array([hit_rate(rng.permutation(len(ep))) for _ in range(s.labels.tc_reps)])
+    res = {"episodes": len(ep), "hits": int(ep["hit"].sum()), "hit_rate": float(actual),
+           "placebo_mean": float(dist.mean()), "placebo_p95": float(np.quantile(dist, 0.95)),
+           "p_value": float((1 + np.sum(dist >= actual)) / (1 + len(dist))),
+           "median_width_days": float((ep["hi_days"] - ep["lo_days"]).median())}
+    return res, ep.drop(columns="_tops")
+
+
+def add_holm(rep: "ValidationReport") -> None:
+    """Holm adjustment over the pre-registered family: one placebo p-value per label plus the
+    tc-window test."""
+    from lppl.labels import holm
+
+    lab = rep.tables.get("labels")
+    if lab is None or lab.empty:
+        return
+    p = list(lab["p_placebo"])
+    tc = rep.tables.get("tc_window")
+    has_tc = tc is not None and not tc.empty and "p_value" in tc
+    if has_tc:
+        p.append(float(tc["p_value"].iloc[0]))
+    adj = holm(p)
+    lab["p_holm"] = adj[: len(lab)]
+    if has_tc:
+        tc["p_holm"] = adj[-1]
 
 
 # --------------------------------------------------------------------------- persistence
@@ -641,7 +773,8 @@ def load_report(out_dir: Path) -> ValidationReport:
     rep = ValidationReport(run_id=summary["run_id"], label=summary.get("label", ""),
                            settings=settings, summary=summary)
     dates = {"events": ["date", "tc_q25", "tc_median", "tc_q75"],
-             "timing": ["first_alarm", "last_alarm", "peak_conf_date", "tc_q25", "tc_q75", "top_date"]}
+             "timing": ["first_alarm", "last_alarm", "peak_conf_date", "tc_q25", "tc_q75", "top_date"],
+             "tc_episodes": ["alarm_date", "tc_q25", "tc_q75"]}
     for csv in out_dir.glob("*.csv"):
         if csv.stem == "backtest_curves":
             rep.curves = pd.read_csv(csv, index_col=0, parse_dates=[0])

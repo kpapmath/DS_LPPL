@@ -1,0 +1,27 @@
+# Refined LPPLS signals + walk-forward combined model (`lppl combine`, docs/combined_model.md).
+# Every choice below was fixed BEFORE the combined model was run on any data.
+
+seed: 0
+labels: [drawdown_63, drawdown_126, major_top_126]   # the labels that passed in validation.md §6
+embargo_days:                 # drop training dates whose label still looks into the test year
+  drawdown_63: 63
+  drawdown_126: 126
+  major_top_126: 252          # a top within 126 days + 126 days to confirm it
+  rally_end_126: 126
+first_test_year: 1995         # walk-forward: first year scored (each fold trains on all earlier years)
+min_train: 1000               # labelled training rows needed before a fold is scored
+l2: 1.0                       # ridge penalty on standardised slopes (intercept unpenalised)
+momentum_knots: [0.1, 0.25, 0.5, 0.75, 0.9]   # hinge terms at these training quantiles of mom_126
+alarm_share: 0.02             # "alarm" = top 2 % of predictions (threshold from the training fit)
+bootstrap: 1000               # month-block bootstrap of the out-of-sample differences
+placebo: 1000                 # standalone signals: circular time-shift placebo
+k_sigma: 1.5
+top_lookback: 252
+
+signals:
+  cluster_rel: 0.25           # conf_cluster: |tc - median tc| <= 0.25 * (median tc - t2) + 5 days
+  cluster_abs_days: 5
+  adf_crit: -2.86             # conf_resid: Dickey-Fuller 5 % critical value (constant, no lags)
+  n_params: 7                 # Lagrange regularisation: chi2 = SSE / (N - 7)
+  tc_scale_days: 63           # tc_proximity = exp(-(median tc - t2) / 63 days)
+  vol_window: 750

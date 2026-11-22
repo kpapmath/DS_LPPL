@@ -22,8 +22,8 @@ DEFAULT_CONFIG = PROJECT_ROOT / "config" / "default.yaml"
 class Instrument(BaseModel):
     ticker: str
     name: str
-    group: Literal["index", "mag7", "extra"]
-    asset_type: Literal["index", "equity"] = "equity"
+    group: Literal["index", "mag7", "extra", "bubble"]
+    asset_type: Literal["index", "equity", "etf", "crypto", "commodity"] = "equity"
 
 
 class DataConfig(BaseModel):

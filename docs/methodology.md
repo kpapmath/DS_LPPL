@@ -274,6 +274,23 @@ therefore get fewer windows in their first years.
 sustained over several weeks, as a warning. This is a *descriptive* statistic and not a
 calibrated probability. Section 8 explains how it should be validated.
 
+**Refined indicators** (`src/lppl/signals.py`, [combined_model.md](combined_model.md) §1). These
+are computed from the stored fits plus a second scan of **short** windows (40–180 days, the short
+scale of the DS LPPLS indicator):
+
+* `conf_short`: the confidence on the short scale;
+* `conf_agree = √(conf · conf_short)`: high only when both scales agree;
+* `conf_cluster`: qualified fits whose `tc` agree with the median `tc`;
+* `conf_resid`: qualified fits with stationary residuals (a Dickey–Fuller test; Lin, Ren &
+  Sornette 2014);
+* `lagr_pos`: whether the window selected by **Lagrange regularisation** is qualified. The cost
+  χ²(N) = SSE/(N − 7) has its linear trend in the window size N removed before the minimum is taken
+  (Demos & Sornette 2017).
+
+On the burst-bubble universe, none of them beats plain `pos_conf`. The residual test passes 98.9 %
+of qualified fits, so it adds nothing. The sharpest signal, but also the rarest, is agreement of the
+two scales.
+
 ## 8. Validation strategy
 
 | Level | What | Where |
@@ -285,9 +302,26 @@ calibrated probability. Section 8 explains how it should be validated.
 | Real data | historical case studies (dot-com 2000, the 2007 peak, Tesla 2021, NVIDIA 2024) | notebook 03, `docs/model_presentation.md` |
 | Benchmark | GA vs. differential evolution vs. multistart Nelder–Mead on random real windows | notebook 04 |
 
-Recommended extensions for a formal study (not implemented): a false-positive rate
-against bootstrapped or GARCH-simulated null price paths; scoring of `tc` against
-an objective definition of drawdowns (Johansen & Sornette's epsilon-drawdown); and
+**Statistical validation** (`lppl validate`, [validation.md](validation.md)) tests the
+indicator against references: the base rate, a momentum score, circular time-shift placebos,
+and a bubble-free null model (a stationary block bootstrap of returns, rescanned). It does this for
+four labels fixed in advance (3- and 6-month drawdowns, major tops, rally ends), with Holm-adjusted
+p-values, a test of the `tc` window against permuted windows, walk-forward re-tuning and a
+de-risking backtest.
+
+**Incremental value** (`lppl combine`, [combined_model.md](combined_model.md)) is tested with
+nested walk-forward logistic models (market features, then + LPPLS, then + refinements), scored by
+out-of-sample log-loss.
+
+Results:
+
+| universe | result |
+|---|---|
+| 12 large US stocks, 2019–2026 | no significant skill |
+| the same 12, 1987–2026 | anticipates major tops (Holm p = 0.03) and fires more on real than on bubble-free prices, but no skill for drawdowns and no gain in the combined model |
+| 16 burst-bubble assets, 1987–2026 | a significant, calibrated signal that fires more on real than on bubble-free prices, but does not time the top and does not improve a market-feature forecast out of sample |
+
+Still not implemented: GARCH null paths, Johansen & Sornette's epsilon-drawdowns, and
 profile-likelihood intervals for `tc` (Filimonov, Demos & Sornette 2017).
 
 ## 9. Criticisms, limitations and how this project addresses them
@@ -302,14 +336,21 @@ profile-likelihood intervals for `tc` (Filimonov, Demos & Sornette 2017).
    dispersion across seeds.
 3. **Statistical tests of log-periodicity.** Residuals are autocorrelated, so classical
    F-tests are invalid. Lomb periodograms and unit-root tests on the residuals have been proposed (Lin, Ren &
-   Sornette 2014; Geraskin & Fantazzini 2013). *Not implemented.* They are natural extensions of
-   `filters.py`.
+   Sornette 2014; Geraskin & Fantazzini 2013). *Partly implemented:* a Dickey–Fuller test on the
+   residuals (`conf_resid` in `signals.py`). Almost every qualified fit passes it, so it does not
+   discriminate. The stricter Ornstein–Uhlenbeck and Lomb tests remain open.
 4. **Low predictive power out of sample.** Brée & Joseph (2013) and others find weak
    predictive ability for crash timing. *Response:* the documentation presents the
-   indicator as a regime diagnostic, not as a timing or trading signal. False positives are expected
+   indicator as a regime diagnostic, not as a timing or trading signal. *Measured here:*
+   * **timing:** the predicted `tc` window contained the top in only 2 of 66 burst-bubble episodes
+     (validation.md §6);
+   * **a genuine regime signal:** on burst bubbles, an alarm roughly doubles the chance of a fall,
+     and it fires more on real than on bubble-free prices;
+   * **no out-of-sample gain** over market features in a walk-forward forecast (combined_model.md §4). False positives are expected
    (strong secular trends such as NVDA 2023–24 can look like a bubble for long stretches).
 5. **Non-stationarity of the universe.** Survivorship bias: today's Magnificent Seven are
-   *ex post* winners. The indicator on these names should not be read as an unbiased estimate
+   *ex post* winners. The burst-bubble universe (`config/bubbles.yaml`) has the opposite selection:
+   it was chosen *for* having bubbles. The indicator on these names should not be read as an unbiased estimate
    of how often bubbles occur.
 6. **Data issues.** Yahoo Finance revises adjusted prices when dividends and splits are applied,
    and has occasional gaps. *Response:* validation rules, hashed snapshots, and offline
@@ -351,10 +392,12 @@ BibTeX entries are in [`references.bib`](references.bib).
 - Holland, J. H. (1975). *Adaptation in Natural and Artificial Systems*. University of Michigan Press.
 - Johansen, A., & Sornette, D. (1999). Critical crashes. *Risk*, 12(1), 91–94.
 - Johansen, A., Ledoit, O., & Sornette, D. (2000). Crashes as critical points. *International Journal of Theoretical and Applied Finance*, 3(2), 219–255.
+- Holm, S. (1979). A simple sequentially rejective multiple test procedure. *Scandinavian Journal of Statistics*, 6(2), 65–70.
 - Lin, L., Ren, R. E., & Sornette, D. (2014). The volatility-confined LPPL model: a consistent model of 'explosive' financial bubbles with mean-reverting residuals. *International Review of Financial Analysis*, 33, 210–225.
 - Nelder, J. A., & Mead, R. (1965). A simplex method for function minimization. *The Computer Journal*, 7(4), 308–313.
 - Sornette, D. (1998). Discrete scale invariance and complex dimensions. *Physics Reports*, 297(5), 239–270.
 - Sornette, D. (2003). *Why Stock Markets Crash: Critical Events in Complex Financial Systems*. Princeton University Press.
 - Sornette, D., Woodard, R., Yan, W., & Zhou, W.-X. (2013). Clarifications to questions and criticisms on the Johansen–Ledoit–Sornette financial bubble model. *Physica A*, 392(19), 4417–4428.
+- Politis, D. N., & Romano, J. P. (1994). The stationary bootstrap. *Journal of the American Statistical Association*, 89(428), 1303–1313.
 - Sornette, D., Demos, G., Zhang, Q., Cauwels, P., Filimonov, V., & Zhang, Q. (2015). Real-time prediction and post-mortem analysis of the Shanghai 2015 stock market bubble and crash. *Journal of Investment Strategies*, 4(4), 77–95.
 - Storn, R., & Price, K. (1997). Differential evolution: a simple and efficient heuristic for global optimization over continuous spaces. *Journal of Global Optimization*, 11, 341–359.

@@ -240,6 +240,46 @@ def _print_validation(s: dict):
     typer.echo("verdict: " + ", ".join(f"{k}={v}" for k, v in s["verdict"].items()))
 
 
+@app.command()
+def combine(
+    label: Annotated[str, typer.Option(help="long-scale scan label (latest finished run)")] = "bubbles",
+    short_label: Annotated[str | None, typer.Option(help="short-scale scan label; omit to skip")] = None,
+    run_id: Annotated[str | None, typer.Option(help="long-scale run instead of --label")] = None,
+    cconfig: Annotated[Path | None, typer.Option("--combined-config",
+                                                 help="default: config/combined.yaml")] = None,
+    first_test_year: Annotated[int | None, typer.Option(help="override first_test_year")] = None,
+    out: Annotated[Path | None, typer.Option(help="default: reports/combined/<label>_<run>")] = None,
+):
+    """Refined LPPLS signals + a walk-forward combined model: does LPPLS add information beyond
+    market features? (docs/combined_model.md)"""
+    _setup()
+    from lppl import combined, pipeline
+
+    eng = _engine()
+    rid = pipeline.resolve_run(eng, run_id, label)
+    if rid is None:
+        typer.echo(f"no finished run for label {label!r}; run `lppl scan` first")
+        raise typer.Exit(1)
+    srid = pipeline.resolve_run(eng, None, short_label) if short_label else None
+    if short_label and srid is None:
+        typer.echo(f"no finished run for short label {short_label!r}")
+        raise typer.Exit(1)
+    s = combined.load_combined_config(cconfig)
+    if first_test_year is not None:
+        s = s.model_copy(update={"first_test_year": first_test_year})
+    rep = combined.run_combined(eng, rid, label, srid, s)
+    out_dir = out or Path("reports/combined") / f"{label}_{rid[:8]}"
+    combined.save_report(rep, out_dir)
+    pd.set_option("display.width", 200)
+    met = rep.tables["metrics"].set_index(["label", "model"])
+    typer.echo(met[["n", "base_rate", "log_loss", "ap", "precision_at_alarm"]].round(4).to_string())
+    inc = rep.tables["increments"]
+    typer.echo("\n" + inc[["label", "model", "versus", "log_loss_gain_pct", "ll_ci_low", "ll_ci_high",
+                           "p_value", "p_holm", "ap_gain"]].round(4).to_string(index=False))
+    typer.echo("\nverdict (Holm, 5 %): " + ", ".join(f"{k}={v}" for k, v in rep.summary["verdict"].items()))
+    typer.echo(f"report: {out_dir}  (notebook: notebooks/06_combined_model.ipynb)")
+
+
 @app.command("compare-reports")
 def compare_reports(reports: Annotated[list[Path], typer.Argument(help="validation report folders")],
                     out: Annotated[Path | None, typer.Option(help="also write a Markdown table")] = None):
@@ -262,6 +302,14 @@ def compare_reports(reports: Annotated[list[Path], typer.Argument(help="validati
             ("backtest.all.lppl.ann_return", "backtest LPPLS return"),
             ("backtest.all.buy_and_hold.ann_return", "backtest buy & hold return"),
             ("backtest.all.lppl.sharpe", "backtest LPPLS Sharpe")]
+    names = sorted({k.split(".")[1] for s in rows.values() for k in s if k.startswith("labels.")})
+    for n in names:
+        keys += [(f"labels.{n}.base_rate", f"{n}: base rate"), (f"labels.{n}.ap_lppl", f"{n}: AP LPPLS"),
+                 (f"labels.{n}.ap_momentum", f"{n}: AP momentum"), (f"labels.{n}.p_holm", f"{n}: p (Holm)")]
+    if any("tc_window.hit_rate" in s for s in rows.values()):
+        keys += [("tc_window.episodes", "tc test: episodes"), ("tc_window.hit_rate", "tc test: hit rate"),
+                 ("tc_window.placebo_mean", "tc test: placebo hit rate"),
+                 ("tc_window.p_holm", "tc test: p (Holm)")]
     df = pd.DataFrame({name: {label: s.get(k) for k, label in keys} for name, s in rows.items()})
     verdicts = pd.DataFrame({name: s["verdict"] for name, s in rows.items()}).replace(
         {True: "yes", False: "no", None: "-"})

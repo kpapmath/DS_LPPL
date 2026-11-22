@@ -1,0 +1,46 @@
+# Validation settings for the FULL-PERIOD pipeline: config/validation.yaml with the walk-forward
+# starting in 1995 instead of 2021 (the full history allows 32 yearly folds).
+seed: 0
+alarm_threshold: 0.3
+events:
+  horizon: 63
+  k_sigma: 1.5
+  vol_window: 750
+grid:
+  horizons:
+  - 21
+  - 63
+  - 126
+  k_sigmas:
+  - 1.0
+  - 1.5
+  - 2.0
+split_date: 2024-01-01
+embargo_days: 63
+bootstrap: 1000
+placebo: 1000
+placebo_min_shift: 126
+walk_forward:
+  first_test_year: 1995
+  trials: 100
+null_model:
+  paths: 1
+  tickers: null
+  block_days: 20
+  scan_step: 21
+  window_step: 50
+backtest:
+  cut: 0.5
+  cost_bps: 10
+  placebo_shifts: 200
+labels:
+  names:
+  - drawdown_63
+  - drawdown_126
+  - major_top_126
+  - rally_end_126
+  k_sigma: 1.5
+  top_lookback: 252
+  reps: 1000
+  tc_test: true
+  tc_reps: 2000

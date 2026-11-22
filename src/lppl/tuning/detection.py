@@ -171,6 +171,16 @@ def _grid_step(lengths) -> int:
 
 
 # --------------------------------------------------------------------------- scoring
+def min_windows_used(data: DetectionData, n_win: np.ndarray) -> float:
+    """Fewest windows a detector setting uses on a date where the full stored grid fits.
+
+    Dates early in a series have fewer stored windows (only those that fit the history); they
+    must not make every setting look invalid, so only full-grid dates are considered."""
+    stored = np.bincount(data.group, minlength=data.n_groups)
+    full = stored == stored.max()
+    return float(n_win[full].min()) if full.any() else 0.0
+
+
 def confidence(data: DetectionData, filters: FilterConfig, min_len: int, max_len: int,
                step: int) -> tuple[np.ndarray, np.ndarray]:
     """Positive confidence and number of windows per group for one detector setting."""
@@ -192,7 +202,7 @@ def evaluate_detector(params: dict, data: DetectionData, settings: IndicatorStud
                                              step=data.grid_step), data.grid_step)
     conf, n_win = confidence(data, filters, win.min_len, win.max_len, win.step)
     g = data.groups
-    out: dict[str, float] = {"n_windows_min": float(n_win[n_win > 0].min()) if (n_win > 0).any() else 0.0}
+    out: dict[str, float] = {"n_windows_min": min_windows_used(data, n_win)}
     for split in ("train", "valid"):
         mask = (g["split"] == split).to_numpy()
         y = g.loc[mask, "label"].to_numpy()

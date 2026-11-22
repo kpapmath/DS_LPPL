@@ -85,6 +85,52 @@ placebo, null paths and Optuna). Its outputs are saved in `reports/validation/<l
 (CSV tables, `summary.json`, `settings.yaml`, figures) and logged to MLflow (`lppl-validation`).
 Archive this folder with the scan it validates.
 
+## Full-period pipeline
+
+```bash
+make pipeline-full                            # all steps, PIPE_ID = today's date
+PIPE_ID=20261122 bash scripts/full_pipeline.sh validate   # resume from a step
+```
+
+Steps: `ingest base tune adopt tuned validate compare short combine`. Scans, validation and the
+combined model run on the host (`.venv`, all cores). The tuning studies and `adopt` run in the
+`lppl-tune` image, so they are logged to MLflow and Optuna in Postgres. Validation runs with
+`--no-mlflow`, because the host environment has no MLflow client. The script writes a timestamped
+line per step into the log, so an interrupted run can be resumed from the failed step with the same
+`PIPE_ID` (the run of 2026-11-22 was resumed at the tuned validation).
+
+## Burst-bubble universe and combined model
+
+```bash
+make bubbles   # ingest the 16 assets (from 1985), long scan (~1 h 45 min on 4 cores),
+               # full validation (~23 min), short-scale scan (~25 min), combined model (~2 min)
+# or step by step
+make bubbles-ingest bubbles-scan bubbles-validate bubbles-short combine
+```
+
+* **Scans** are deterministic in the same way as the main scan: the per-window seeds depend only on
+  the seed, ticker, date and window length. The short scan's analysis dates are aligned with the
+  long scan (both are counted back from the last day with the same step).
+* **`lppl combine`** is deterministic for the given pair of runs and `config/combined.yaml`. The
+  logistic fits are deterministic and the bootstrap is seeded. Outputs go to
+  `reports/combined/<label>_<run>/`, including the full feature table (`features.csv`), so
+  results can be re-analysed without the database.
+* **Ingestion overwrites snapshots.** Running `make bubbles-ingest` rewrites the snapshot CSVs of
+  tickers shared with the main universe (^GSPC, ^IXIC, NVDA, TSLA) with the longer history from
+  1985. Scans of `config/default.yaml` still start from their own `data.start`, so their results
+  are unaffected. To archive the exact inputs, keep `data/snapshots/` together with the
+  `ingestion_log` sha256 values.
+
+Run labels used in the docs:
+
+| label | config | contents |
+|---|---|---|
+| `default` | `config/default.yaml` | reference scan, 12 instruments |
+| `pipeline-base` / `pipeline-tuned` | `config/pipeline.yaml` / `config/pipeline_tuned.yaml` | `make pipeline` |
+| `pipeline-short` | `config/pipeline_short.yaml` | short-scale scan of the 12 instruments |
+| `bubbles` / `bubbles-short` | `config/bubbles.yaml` / `config/bubbles_short.yaml` | burst-bubble universe, long and short scale |
+| `full-base` / `full-tuned` / `full-short` | `config/full.yaml` / `config/full_tuned.yaml` / `config/full_short.yaml` | `make pipeline-full`: the 12 instruments from 1987 |
+
 ## Run bookkeeping
 
 ```bash

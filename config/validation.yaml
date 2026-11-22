@@ -46,3 +46,14 @@ backtest:
   cut: 0.5                    # exposure 1 - cut while the latest analysis date is an alarm
   cost_bps: 10                # per unit of exposure change
   placebo_shifts: 200
+
+# Pre-registered labels (lppl/labels.py, docs/validation.md §6), fixed BEFORE looking at the
+# burst-bubble results. Each gets the skill tests; the family of p-values (one time-shift
+# placebo per label + the tc-window test) is Holm-adjusted.
+labels:
+  names: [drawdown_63, drawdown_126, major_top_126, rally_end_126]
+  k_sigma: 1.5                # major top: the fall after it is >= k_sigma * sigma * sqrt(126)
+  top_lookback: 252           # major top: highest close of the previous year (and next 6 months)
+  reps: 1000
+  tc_test: true               # does a major top fall inside the predicted [tc_q25, tc_q75]?
+  tc_reps: 2000

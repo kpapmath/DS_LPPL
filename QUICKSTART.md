@@ -65,10 +65,22 @@ To execute all notebooks headless (inside the container): `make notebooks`.
 ```bash
 make validate-quick                 # ~20 s: skill, calibration, bootstrap, placebo, timing, backtest
 make validate                       # + walk-forward re-tuning + null-model rescans (~15 min), logged to MLflow
+make bubbles                        # 16 burst-bubble assets since 1985: ingest, scans, validate, combined model (~2.5 h)
+make pipeline-full                  # the 12 instruments over their whole history: every step incl. tuning (~5 h)
 ```
 
 The report lands in `reports/validation/<label>_<run>/`. Notebook `05_validation` presents it,
 and [docs/validation.md](docs/validation.md) explains how to read it.
+
+To check whether LPPLS adds anything to ordinary market features, run the walk-forward combined
+model:
+
+```bash
+make combine                        # needs the `bubbles` and `bubbles-short` scans (made by `make bubbles`)
+```
+
+Its report lands in `reports/combined/<label>_<run>/`. Notebook `06_combined_model` presents it,
+and [docs/combined_model.md](docs/combined_model.md) explains it.
 
 ## 7. Tune the model (optional)
 

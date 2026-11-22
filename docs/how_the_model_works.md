@@ -25,8 +25,19 @@
   the analysis date (median 41 days), and almost never more than 4 months ahead.
 * **What validation shows:** the model reliably recognises *overheated, accelerating* markets.
   After an alarm, prices on average kept rising for months and then fell harder than usual. It
-  is **not** a reliable crash-timing tool. Its estimated end dates were usually too early, and it
-  does not predict 3-month drawdowns better than a simple momentum rule.
+  is **not** a reliable crash-timing tool: its estimated end dates rarely contain the top. On the 12
+  large US stocks of the current run it shows no significant skill. On 16 assets with real burst
+  bubbles since 1987, however, an alarm **doubles** the chance of a large fall within 3–6 months
+  (30 % vs 16 %), also among rallies of equal strength. This passes every significance test
+  ([validation.md](validation.md) §6).
+* **Is it useful in practice?** Added to a forecasting model that already knows recent returns,
+  volatility and the distance from the high, LPPLS does **not** improve the forecasts. About half
+  of what it sees is already in those ordinary numbers, and the rest is too rare to matter on
+  average. Refinements from the research literature did not change this
+  ([combined_model.md](combined_model.md)).
+* **Over the whole history of the 12 instruments (1987–2026),** the model anticipates *major
+  tops* better than chance, but not ordinary drawdowns, and it never placed a top inside its
+  estimated end window (0 of 78 episodes) ([validation.md](validation.md) §7).
 
 ---
 
@@ -302,7 +313,50 @@ which is what the bubble theory describes. But the timing is too vague to trade 
 | Does it fire more on real prices than on simulated prices without bubbles? | not significantly (4.5 % vs 3.9 %, p = 0.18) |
 | Would cutting exposure on alarms have helped? | no: about 5 % behind buy & hold over 2019–2026 |
 
+This table covers the 12 stocks of the current run. On the **burst-bubble universe** (16 assets
+with documented bubbles, 1987–2026; [validation.md](validation.md) §6) the answers change:
+
+* alarms are followed by a large fall **twice as often** as a random date;
+* the signal beats the time-shifted placebo (p = 0.001) and fires more on real prices than on
+  simulated prices without bubbles (p = 0.005);
+* a higher confidence means more falls;
+* among rallies of the same strength, an alarm still about doubles the chance of a fall.
+
+It still does not time the crash, and it does not improve a portfolio when used alone.
+
 Details, charts and caveats are in [validation.md](validation.md) and notebook `05_validation`.
+
+### 6.8 Does it add anything to ordinary market information? (`lppl combine`)
+
+The last test asks the practical question. A simple forecasting model predicts, every date, the
+probability of a large fall. It uses only ordinary information:
+
+* how much the price has risen over 1, 6 and 12 months;
+* whether volatility is rising;
+* how far the price is below its 1-year high.
+
+The same model is then built *with* the bubble confidence, and with refined versions of it. Each
+model is trained only on earlier years and tested on the next year, every year from 1995 to 2026,
+on the 16 burst-bubble assets.
+
+| refinement tried | what it does | result |
+|---|---|---|
+| short look-backs (2–9 months) | a second scan with short windows | weaker on its own |
+| both scales agree | alarm only when long *and* short look-backs agree | the sharpest alarms (43 % followed by a fall within strong rallies), but rare |
+| end dates agree | count only fits that agree on the end date | the same as the plain confidence |
+| residual check | count only fits whose errors look like noise | almost every fit passes, so no change |
+| best single window | a statistical rule picks one look-back period | weak |
+
+| question | answer |
+|---|---|
+| does ordinary market information predict large falls? | yes, better than recent returns alone |
+| does the bubble confidence improve that forecast? | **no** (none of the 6 pre-registered tests passes) |
+| do the refinements improve it? | **no**; they make it slightly worse |
+| are the top 2 % of warnings more often right with LPPLS? | slightly (44 % vs 39 %), but not significantly |
+
+So the bubble signal is real, but most of its information is shared with simple price statistics.
+What remains is concentrated in a few alarms, too rare to improve a forecast made for every day.
+Details are in [combined_model.md](combined_model.md) and notebook `06_combined_model`.
 
 ---
 
@@ -400,6 +454,7 @@ months, and a sharp correction follows. The model gets the *character* of the ma
 | flag that a price is in an accelerating, herd-driven phase | tell you the day, or even the month, a bubble ends |
 | show whether that verdict is robust across 6-month to 3-year views | tell you how far the price will fall |
 | give a rough window for when the pattern runs out (weeks to months) | predict 3-month drawdowns better than a simple momentum rule (tested) |
+| on assets with real bubbles, mark rallies where a large fall is about twice as likely (tested) | improve a forecast that already uses returns, volatility and drawdown (tested) |
 | compare many instruments on one consistent scale | account for news, earnings, interest rates or anything outside the price chart |
 
 Sensible uses: a **risk thermometer** that tells you a market is running hot, a prompt for closer
@@ -424,6 +479,9 @@ deciding to short a stock.
 | **Base rate** | how often a large fall happens anyway, the score of a random guess |
 | **Average precision** | a 0–1 score of how well high confidence lines up with later large falls |
 | **Over-fitting** | settings that describe the past well but do not carry over to new data |
+| **Pre-registered** | fixed in a config file before looking at the results, so the test cannot be bent to fit them |
+| **Walk-forward** | train on earlier years only, test on the next year, repeat every year |
+| **Log-loss** | a score for probability forecasts; lower is better, and it punishes over-confidence |
 
 ---
 
@@ -432,5 +490,7 @@ deciding to short a stock.
 * [model_presentation.md](model_presentation.md): slide-style summary with more charts
 * [methodology.md](methodology.md): the full theory, the equations, and the scientific criticism
 * [tuning.md](tuning.md): how the settings were tuned and tested out of sample
+* [validation.md](validation.md): every validation test and its result, including the burst-bubble universe
+* [combined_model.md](combined_model.md): refined signals and the combined forecasting model
 * `notebooks/03_bubble_indicator_dashboard.ipynb`: interactive charts for every instrument
 * `lppl report`: today's readings from the command line

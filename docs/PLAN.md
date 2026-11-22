@@ -21,6 +21,10 @@ places where the implementation differs from it are listed directly below and do
 | — | `lppl requalify` | re-applies filters to stored fits without refitting |
 | — (added later) | hyperparameter tuning with Optuna, Ray Tune and MLflow, dockerised | see `docs/tuning.md` |
 | — (added later) | `lppl validate` + notebook 05: significance, placebo, walk-forward, null model, backtest | see `docs/validation.md` |
+| — (added later) | `make pipeline`: base scan → tuning → validated adoption → tuned scan → validation of both | see `docs/validation.md` §5 |
+| — (added later) | burst-bubble universe (16 assets from 1985), 4 pre-registered labels with Holm correction, `tc`-window test | see `docs/validation.md` §6 |
+| — (added later) | `make pipeline-full`: the whole pipeline on the 12 instruments over 1987–2026 (`scripts/full_pipeline.sh`) | see `docs/validation.md` §7 |
+| — (added later) | refined signals (short scale, `tc` clustering, residual test, Lagrange window) and the walk-forward combined model, `lppl combine` + notebook 06 | see `docs/combined_model.md` |
 | CI (phase 9) | not set up | optional in the plan; `make test-docker` runs the full suite in the container |
 
 ---

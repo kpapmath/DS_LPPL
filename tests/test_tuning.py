@@ -289,3 +289,14 @@ def test_coerce_restores_declared_types():
     assert isinstance(p["population_size"], int) and isinstance(p["polish_maxiter"], int)
     q = coerce({"window_stride": 2.0, "window_min_len": 150.0}, TCFG.indicator.space)
     assert q == {"window_stride": 2, "window_min_len": 150} and isinstance(q["window_stride"], int)
+
+
+def test_min_windows_ignores_short_history_dates():
+    """Early dates with only a few stored windows must not invalidate every setting."""
+    from lppl.tuning.detection import min_windows_used
+
+    class D:  # minimal stand-in: group 0 has 2 stored windows, groups 1-2 have 6
+        group = np.array([0, 0] + [1] * 6 + [2] * 6)
+        n_groups = 3
+
+    assert min_windows_used(D, np.array([2.0, 6.0, 5.0])) == 5.0
