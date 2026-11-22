@@ -78,6 +78,13 @@ lppl scan --label default
 lppl verify
 ```
 
+## Validation reports
+
+`lppl validate` is deterministic for a given scan and `config/validation.yaml` (seeded bootstrap,
+placebo, null paths and Optuna). Its outputs are saved in `reports/validation/<label>_<run>/`
+(CSV tables, `summary.json`, `settings.yaml`, figures) and logged to MLflow (`lppl-validation`).
+Archive this folder with the scan it validates.
+
 ## Run bookkeeping
 
 ```bash

@@ -20,6 +20,7 @@ places where the implementation differs from it are listed directly below and do
 | Filter `0.01 ≤ m ≤ 0.99` | `0.1 ≤ m ≤ 0.9` plus `tc > t2 + 3 days` | 24 % of qualified fits were pinned at the search bounds (methodology §6) |
 | — | `lppl requalify` | re-applies filters to stored fits without refitting |
 | — (added later) | hyperparameter tuning with Optuna, Ray Tune and MLflow, dockerised | see `docs/tuning.md` |
+| — (added later) | `lppl validate` + notebook 05: significance, placebo, walk-forward, null model, backtest | see `docs/validation.md` |
 | CI (phase 9) | not set up | optional in the plan; `make test-docker` runs the full suite in the container |
 
 ---

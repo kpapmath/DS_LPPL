@@ -157,6 +157,133 @@ def verify(reference: Annotated[Path, typer.Option()] = Path("reports/reference.
     typer.echo("OK: results reproduced")
 
 
+@app.command()
+def validate(
+    label: Annotated[str, typer.Option(help="validate the latest finished run with this label")] = "default",
+    run_id: Annotated[str | None, typer.Option(help="validate this run instead")] = None,
+    vconfig: Annotated[Path | None, typer.Option("--validation-config",
+                                                 help="default: config/validation.yaml")] = None,
+    null_paths: Annotated[int | None, typer.Option(help="override null_model.paths (0 = skip)")] = None,
+    walk_forward: Annotated[bool, typer.Option(help="run the walk-forward folds")] = True,
+    out: Annotated[Path | None, typer.Option(help="default: reports/validation/<label>_<run>")] = None,
+    mlflow: Annotated[bool, typer.Option(help="log to MLflow if reachable")] = True,
+    n_jobs: Annotated[int, typer.Option()] = -1,
+    tuning_config: Annotated[Path | None, typer.Option(
+        help="search space for walk-forward re-tuning (default: config/tuning.yaml)")] = None,
+):
+    """Validate a stored scan: skill, calibration, bootstrap CIs, placebo, robustness grid,
+    timing, walk-forward, null-model false alarms and a de-risking backtest."""
+    _setup()
+    from lppl import pipeline, validation
+    from lppl.data import db
+
+    eng = _engine()
+    rid = pipeline.resolve_run(eng, run_id, label)
+    if rid is None:
+        typer.echo("no finished run found; run `lppl scan` first")
+        raise typer.Exit(1)
+    s = validation.load_validation_config(vconfig)
+    if null_paths is not None:
+        s = s.model_copy(update={"null_model": s.null_model.model_copy(update={"paths": null_paths})})
+    run_label = label if run_id is None else (db.list_runs(eng).set_index("run_id").loc[rid, "label"] or "")
+    space = None
+    if tuning_config is not None:
+        from lppl.tuning.settings import load_tuning_config
+        space = load_tuning_config(tuning_config).indicator.space
+    rep = validation.run_validation(eng, rid, run_label, s, run_walk_forward=walk_forward,
+                                    run_null=s.null_model.paths > 0, n_jobs=n_jobs, space=space)
+    out_dir = out or Path("reports/validation") / f"{run_label.replace(':', '_')}_{rid[:8]}"
+    validation.save_report(rep, out_dir)
+    if mlflow:
+        mlrun = validation.log_to_mlflow(rep, out_dir)
+        if mlrun:
+            typer.echo(f"MLflow run {mlrun} (experiment lppl-validation)")
+    _print_validation(rep.summary)
+    typer.echo(f"\nreport: {out_dir}  (notebook: notebooks/05_validation.ipynb)")
+
+
+def _print_validation(s: dict):
+    def f(v, pct=False):
+        if v is None:
+            return "-"
+        return f"{v:.1%}" if pct else f"{v:.3f}"
+
+    typer.echo(f"\n== validation of run {s['run_id'][:8]} ({s['label']}) | event: "
+               f"{s['event']['horizon']}d drawdown >= {s['event']['k_sigma']} sigma*sqrt(h) ==")
+    typer.echo(f"{'':28}{'all dates':>12}{'validation':>12}")
+    for key, name in [("base_rate", "base rate"), ("ap_lppl", "AP LPPLS"), ("ap_momentum", "AP momentum"),
+                      ("precision_at_alarm", "precision at alarm"), ("recall_at_alarm", "recall at alarm")]:
+        typer.echo(f"{name:28}{f(s.get(f'all.{key}')):>12}{f(s.get(f'valid.{key}')):>12}")
+    for key, name in [("lppl_minus_base", "LPPLS - base (95% CI)"),
+                      ("lppl_minus_momentum", "LPPLS - momentum (95% CI)")]:
+        ci = lambda sp, k=key: s.get(f"{sp}.ci.{k}") or [None, None]  # noqa: E731
+        typer.echo(f"{name:28}{'[' + f(ci('all')[0]) + ', ' + f(ci('all')[1]) + ']':>12}"
+                   f"  {'[' + f(ci('valid')[0]) + ', ' + f(ci('valid')[1]) + ']':>12}")
+    typer.echo(f"placebo p-value: LPPLS {f(s.get('placebo.conf.p_value'))}, "
+               f"momentum {f(s.get('placebo.momentum.p_value'))}")
+    if "timing.episodes_complete" in s:
+        typer.echo(f"timing: {s['timing.episodes_complete']} episodes, median lead to top "
+                   f"{s['timing.median_lead_trading_days']:.0f} trading days, top in tc window "
+                   f"{s['timing.top_in_tc_window']}/{s['timing.episodes_complete']}")
+    if "walk_forward.mean_ap_stored_test" in s:
+        typer.echo("walk-forward mean test AP: base " + f(s.get("walk_forward.mean_base_rate_test"))
+                   + " | momentum " + f(s.get("walk_forward.mean_ap_momentum_test"))
+                   + " | LPPLS " + f(s.get("walk_forward.mean_ap_stored_test"))
+                   + " | LPPLS re-tuned " + f(s.get("walk_forward.mean_ap_tuned_test")))
+    if "null.alarm_rate_null" in s:
+        typer.echo(f"alarm rate: real {f(s['null.alarm_rate_real'], True)} vs bubble-free paths "
+                   f"{f(s['null.alarm_rate_null'], True)} (one-sided p = {f(s.get('null.p_value_real_gt_null'))})")
+    for strat in ("buy_and_hold", "lppl", "momentum", "lppl_placebo"):
+        k = f"backtest.all.{strat}"
+        typer.echo(f"backtest {strat:14} return {f(s.get(k + '.ann_return'), True):>7}  "
+                   f"sharpe {f(s.get(k + '.sharpe')):>6}  max DD {f(s.get(k + '.max_drawdown'), True):>7}")
+    typer.echo("verdict: " + ", ".join(f"{k}={v}" for k, v in s["verdict"].items()))
+
+
+@app.command("compare-reports")
+def compare_reports(reports: Annotated[list[Path], typer.Argument(help="validation report folders")],
+                    out: Annotated[Path | None, typer.Option(help="also write a Markdown table")] = None):
+    """Side-by-side key numbers and verdicts of several validation reports."""
+    from lppl import validation
+
+    rows = {}
+    for d in reports:
+        s = validation.load_report(d).summary
+        rows[f"{s['label']} ({s['run_id'][:8]})"] = s
+    keys = [("all.base_rate", "base rate (all)"), ("all.ap_lppl", "AP LPPLS (all)"),
+            ("valid.base_rate", "base rate (2024+)"), ("valid.ap_lppl", "AP LPPLS (2024+)"),
+            ("valid.ap_momentum", "AP momentum (2024+)"), ("all.precision_at_alarm", "precision at alarm"),
+            ("all.alarm_rate_at_alarm", "alarm rate"), ("placebo.conf.p_value", "placebo p-value"),
+            ("timing.median_lead_trading_days", "median lead to top (days)"),
+            ("timing.top_in_tc_window", "tops inside tc window"),
+            ("walk_forward.mean_ap_stored_test", "walk-forward AP"),
+            ("null.alarm_rate_real", "alarm rate real (null grid)"),
+            ("null.alarm_rate_null", "alarm rate bubble-free"),
+            ("backtest.all.lppl.ann_return", "backtest LPPLS return"),
+            ("backtest.all.buy_and_hold.ann_return", "backtest buy & hold return"),
+            ("backtest.all.lppl.sharpe", "backtest LPPLS Sharpe")]
+    df = pd.DataFrame({name: {label: s.get(k) for k, label in keys} for name, s in rows.items()})
+    verdicts = pd.DataFrame({name: s["verdict"] for name, s in rows.items()}).replace(
+        {True: "yes", False: "no", None: "-"})
+    pd.set_option("display.width", 200)
+    typer.echo(df.round(4).to_string())
+    typer.echo("\nverdict (5 % level):")
+    typer.echo(verdicts.to_string())
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("## Key numbers\n\n" + _md_table(df.round(4)) + "\n\n## Verdict (5 % level)\n\n"
+                       + _md_table(verdicts) + "\n")
+        typer.echo(f"wrote {out}")
+
+
+def _md_table(df: pd.DataFrame) -> str:
+    cols = [""] + [str(c) for c in df.columns]
+    lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+    for idx, row in df.iterrows():
+        lines.append("| " + " | ".join([str(idx)] + ["-" if pd.isna(v) else str(v) for v in row]) + " |")
+    return "\n".join(lines)
+
+
 @app.command("fit-one")
 def fit_one(ticker: str, end: Annotated[dt.datetime, typer.Option(formats=["%Y-%m-%d"])],
             window: Annotated[int, typer.Option(help="window length in trading days")] = 500,

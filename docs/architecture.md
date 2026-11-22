@@ -38,6 +38,7 @@
 | `pipeline.py` | orchestration: `ingest`, `scan`, `report`, `resolve_run` | everything above |
 | `cli.py` | Typer CLI | pipeline |
 | `viz.py` | matplotlib style and chart helpers for the notebooks | matplotlib |
+| `validation.py` | validation suite (`lppl validate`, notebook 05): skill, calibration, block bootstrap, placebo, robustness grid, timing, walk-forward, null model, backtest | tuning.detection (labels, AP), joblib; optuna optional |
 | `tuning/*` | hyperparameter studies, see [tuning.md](tuning.md) | optuna, ray[tune], mlflow (lazy imports; only in the `lppl-tune` image) |
 
 The model and optimiser layers have **no I/O dependencies**. They can be unit-tested and

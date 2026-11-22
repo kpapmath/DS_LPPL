@@ -40,6 +40,8 @@ Yahoo Finance ──► lppl ingest ──► PostgreSQL ◄── lppl scan ◄
 5. **Explore** the results in four notebooks, or with `lppl report`.
 6. **Tune** the GA and the detector with Optuna, Ray Tune and MLflow, all in Docker
    ([docs/tuning.md](docs/tuning.md)).
+7. **Validate** accuracy with `lppl validate`: significance tests, a placebo, walk-forward,
+   bubble-free null model and a backtest ([docs/validation.md](docs/validation.md)).
 
 ## Repository layout
 
@@ -48,10 +50,10 @@ Yahoo Finance ──► lppl ingest ──► PostgreSQL ◄── lppl scan ◄
 | `src/lppl/model/` | `lppls.py` (model and linear solve), `filters.py`, `calibrate.py`, `indicator.py` |
 | `src/lppl/optim/` | `ga.py` (the genetic algorithm), `baseline.py` (differential evolution and Nelder–Mead benchmarks) |
 | `src/lppl/data/` | `yahoo.py` (download, validation, snapshots), `db.py` (schema and data access) |
-| `src/lppl/` | `pipeline.py`, `cli.py` (`lppl …`), `config.py`, `viz.py` |
+| `src/lppl/` | `pipeline.py`, `cli.py` (`lppl …`), `config.py`, `viz.py`, `validation.py` (`lppl validate`) |
 | `src/lppl/tuning/` | tuning studies: `settings.py` (search spaces), `ga_benchmark.py`, `detection.py`, `runners.py` (Optuna / Ray), `tracking.py` (MLflow), `cli.py` (`lppl tune …`) |
-| `config/` | `default.yaml` (full experiment), `quick.yaml` (a few minutes), `tuning.yaml` (tuning studies) |
-| `notebooks/` | 01 data overview · 02 single-fit walkthrough · 03 dashboard · 04 GA benchmark |
+| `config/` | `default.yaml` (full experiment), `quick.yaml` (a few minutes), `tuning.yaml` (tuning studies), `validation.yaml` (validation suite) |
+| `notebooks/` | 01 data overview · 02 single-fit walkthrough · 03 dashboard · 04 GA benchmark · 05 validation |
 | `tests/` | unit tests (no network or DB needed) and integration tests (`-m integration`) |
 | `docs/` | methodology, model presentation, architecture, data dictionary, configuration, reproducibility |
 | `docker/`, `docker-compose.yml`, `Makefile` | containers (app, tuning, MLflow, optuna-dashboard) and one-command workflows |
@@ -70,6 +72,7 @@ make jupyter            # http://localhost:8888 (token: lppl)
 
 - [docs/how_the_model_works.md](docs/how_the_model_works.md): **start here**, a plain-language guide to how the model works, how it is validated and its prediction horizon, with examples from the current run.
 - [docs/methodology.md](docs/methodology.md): extended review of LPPLS, its estimation, the GA, and the criticisms.
+- [docs/validation.md](docs/validation.md): how accuracy is validated (`lppl validate`, notebook 05), and the results.
 - [docs/tuning.md](docs/tuning.md): hyperparameter-tuning methodology (Optuna, Ray Tune, MLflow), the procedure and the pitfalls.
 - [docs/model_presentation.md](docs/model_presentation.md): presentation of the model and the results.
 - [docs/architecture.md](docs/architecture.md): components, data flow and design decisions.
@@ -89,6 +92,7 @@ lppl requalify [-c cfg] [--run-id ID]     re-apply filters to stored fits
 lppl runs | delete-run ID
 lppl export --out reports/reference.csv
 lppl verify --reference reports/reference.csv
+lppl validate [--label default] [--null-paths N] [--no-walk-forward]
 lppl fit-one NVDA --end 2024-06-18 --window 500
 
 lppl tune init-stores | build-benchmark
@@ -102,7 +106,7 @@ Inside Docker, use `docker compose run --rm app <command>`, or the `make` target
 ## Tests
 
 ```bash
-make test               # 90 unit tests, host venv, no DB or network
+make test               # 104 unit tests, host venv, no DB or network
 make test-integration   # DB tests against the compose Postgres
 make test-docker        # everything, inside the container
 ```

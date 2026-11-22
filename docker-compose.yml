@@ -58,6 +58,7 @@ services:
       - ./notebooks:/app/notebooks
       - ./src:/app/src
       - ./data:/app/data
+      - ./reports:/app/reports
       - ./docs/figures:/app/docs/figures
     profiles: ["notebooks"]
 
@@ -103,6 +104,7 @@ services:
     volumes:
       - ./data:/app/data          # benchmark cache, study outputs, ray_results
       - ./config:/app/config      # read config/*.yaml, write exported tuned configs
+      - ./reports:/app/reports    # `lppl validate` reports
     profiles: ["tune"]
 
   optuna-dashboard:

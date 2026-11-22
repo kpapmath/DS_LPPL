@@ -191,15 +191,15 @@ months".**
 
 ### What actually happened: the model was early
 
-Across the 21 completed alarm episodes in the current run (an episode is a run of dates with
-confidence ≥ 0.3 for the same instrument):
+Across the 20 completed alarm episodes in the current run (an episode is a run of dates with
+confidence ≥ 0.3 for the same instrument; figures from `lppl validate`, test 6):
 
-* The price kept **rising** after the first alarm: median **+25 %** up to its subsequent top.
+* The price kept **rising** after the first alarm: median **+27 %** up to its subsequent top.
 * That top came a median **110 trading days (about 5 months)** after the first alarm. In 6
   episodes, the price was still near its high 6 months later.
 * After that top, the price fell a median **−25 %** within the following 6 months.
-* The actual top fell inside the model's estimated end window in **none** of the 21 episodes,
-  although NVIDIA in 2021 missed it by only 10 days.
+* The actual top fell inside the model's estimated end window in only **1 of the 20** episodes
+  (Broadcom, spring 2024). NVIDIA in 2021 missed it by just 10 days.
 
 So the realistic reading of the horizon is that **the alarm arrives months before the top, and the
 estimated end date should be read as "the regime is late-stage", not as a calendar date.**
@@ -252,6 +252,10 @@ A complete run was deleted and recomputed from scratch inside the Docker contain
 The famous cases look convincing, but they were chosen *because* they are famous. The real test is
 6.5 and 6.6.
 
+> The full battery of accuracy tests (significance intervals, placebo, walk-forward, simulated
+> bubble-free prices, backtest) is run by `lppl validate` and described in
+> [validation.md](validation.md). Its verdict for the current run is summarised in §6.7.
+
 ### 6.5 Does it predict out of sample? (the statistical test)
 
 The fairest test asks: *on dates the model was never tuned on, does a high confidence come before
@@ -285,6 +289,20 @@ scientific criticism of the method ([methodology.md](methodology.md) §9).
 Alarms mark periods that are **hotter on the way up and harsher on the way down** than normal,
 which is what the bubble theory describes. But the timing is too vague to trade on, and the sample
 (68 alarm dates in about 23 episodes) is too small for firm conclusions.
+
+### 6.7 The full validation suite (`lppl validate`)
+
+| Question (5 % level) | Answer |
+|---|---|
+| Better than a random guess? | no: an alarm was followed by a large fall *less* often (9.5 %) than a random date (13.2 %) |
+| Better than a simple momentum rule? | no, on all dates and on 2024+ |
+| Does the *timing* of the signal matter? | no: randomly time-shifted copies do as well (p = 0.40) |
+| Does a higher confidence mean more falls? | no clear pattern |
+| Does re-tuning on the past help the next year? | only in 1 of 6 years |
+| Does it fire more on real prices than on simulated prices without bubbles? | not significantly (4.5 % vs 3.9 %, p = 0.18) |
+| Would cutting exposure on alarms have helped? | no: about 5 % behind buy & hold over 2019–2026 |
+
+Details, charts and caveats are in [validation.md](validation.md) and notebook `05_validation`.
 
 ---
 

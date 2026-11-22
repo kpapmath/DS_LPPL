@@ -149,6 +149,56 @@ def export_best(name: str, out: Annotated[Path, typer.Option()] = Path("config/t
     typer.echo(f"wrote {out}")
 
 
+@app.command()
+def adopt(ga_study: Annotated[str | None, typer.Option(help="GA study name (data/tuning/<name>)")] = None,
+          indicator_study: Annotated[str | None, typer.Option(help="detector study name")] = None,
+          config: CfgOpt = None,
+          out: Annotated[Path, typer.Option(help="tuned experiment config to write")] = Path("config/tuned.yaml"),
+          policy: Annotated[str, typer.Option(help="validated | all")] = "validated",
+          tuning_config: TuneCfgOpt = None):
+    """Build a tuned experiment config from finished studies.
+
+    policy=validated (default): GA settings are adopted only if they beat the current GA on the
+    benchmark loss; detector settings only if they also improve AP on the held-out validation
+    period. policy=all adopts the best settings of each study regardless."""
+    import yaml
+
+    from lppl.config import load_config
+    from lppl.tuning.runners import TUNING_DIR
+    from lppl.tuning.settings import apply_params, coerce, config_to_yaml, load_tuning_config
+
+    if policy not in ("validated", "all"):
+        raise typer.BadParameter("policy must be 'validated' or 'all'")
+    cfg = load_config(config)
+    space = load_tuning_config(tuning_config)
+    decisions = []
+    for kind, name in (("ga", ga_study), ("indicator", indicator_study)):
+        if not name:
+            continue
+        s = json.loads((TUNING_DIR / name / "best.json").read_text())
+        best, base = s["best_metrics"], s["baseline_metrics"]
+        if kind == "ga":
+            key, better = "loss", best.get("loss", float("inf")) < base.get("loss", float("inf"))
+        else:
+            key, better = "ap_valid", best.get("ap_valid", 0.0) > base.get("ap_valid", 0.0)
+        take = policy == "all" or better
+        decisions.append({"study": name, "kind": kind, "criterion": key, "current": base.get(key),
+                          "tuned": best.get(key), "adopted": bool(take),
+                          "params": s["best_params"] if take else {}})
+        if take:
+            params = coerce(s["best_params"], getattr(space, kind).space)
+            cfg = apply_params(cfg, kind, params, s.get("data", {}).get("window_grid_step"))
+        typer.echo(f"{kind:9} {name}: {key} current {base.get(key)} -> tuned {best.get(key)} "
+                   f"=> {'ADOPT' if take else 'keep current'}")
+    header = "Tuned config written by `lppl tune adopt` (policy: " + policy + ")\n" + "\n".join(
+        f"{d['kind']} study {d['study']}: {d['criterion']} {d['current']} -> {d['tuned']}: "
+        f"{'adopted' if d['adopted'] else 'NOT adopted, current values kept'}" for d in decisions)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(config_to_yaml(cfg, header))
+    out.with_suffix(".decisions.yaml").write_text(yaml.safe_dump(decisions, sort_keys=False))
+    typer.echo(f"wrote {out} (+ {out.with_suffix('.decisions.yaml').name})")
+
+
 @app.command("evaluate-config")
 def evaluate_config(config: CfgOpt = None, tuning_config: TuneCfgOpt = None):
     """Score an experiment config's detector (filters + windows) on the stored fits."""

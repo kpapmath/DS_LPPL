@@ -9,7 +9,8 @@ export LPPL_GIT_SHA := $(shell git rev-parse --verify -q HEAD 2>/dev/null)
 .PHONY: help up down clean-db build lock ingest ingest-snapshot scan scan-quick case-studies \
         report notebooks jupyter test test-integration test-docker lint reproduce verify \
         tune-build tune-up tune-down tune-benchmark tune-ga tune-ga-ray tune-indicator \
-        tune-indicator-ray tune-lock
+        tune-indicator-ray tune-lock validate validate-quick pipeline pipeline-ingest pipeline-scan-base \
+        pipeline-tune pipeline-adopt pipeline-scan-tuned pipeline-validate pipeline-compare
 
 help:  ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-18s %s\n",$$1,$$2}'
@@ -109,3 +110,52 @@ tune-indicator: tune-up  ## detector study with Optuna on the stored default sca
 
 tune-indicator-ray: tune-up  ## detector study with Ray Tune
 	$(TUNE) run indicator --backend ray --trials $(or $(ITRIALS),300) --jobs $(JOBS)
+
+# --------------------------------------------------------------------------- validation
+VALIDATE := $(COMPOSE) --profile tune run --rm --entrypoint lppl tune validate
+
+validate: tune-up  ## full validation of the latest `default` scan (null model, walk-forward, MLflow)
+	$(VALIDATE) --label $(or $(LABEL),default)
+
+validate-quick: up  ## validation without null-model rescans (seconds; app image, no MLflow)
+	$(RUN) validate --label $(or $(LABEL),default) --null-paths 0 --no-mlflow
+
+# --------------------------------------------------------------------------- full pipeline
+# ingest -> baseline scan -> tune GA (Ray Tune) + detector (Optuna) -> adopt only validated
+# improvements -> tuned scan -> validate both -> compare. ~3 h on 2 CPUs. Steps can be re-run
+# individually; pass the same PIPE_ID to steps run on another day.
+PIPE_ID ?= $(shell date +%Y%m%d)
+P_CFG := config/pipeline.yaml
+P_TCFG := config/pipeline_tuning.yaml
+P_TUNED := config/pipeline_tuned.yaml
+TUNE_LPPL := $(COMPOSE) --profile tune run --rm --entrypoint lppl tune
+P_GA := ga-pipeline-$(PIPE_ID)
+P_IND := indicator-pipeline-$(PIPE_ID)
+
+pipeline: tune-build tune-up pipeline-ingest pipeline-scan-base pipeline-tune pipeline-adopt \
+          pipeline-scan-tuned pipeline-validate pipeline-compare  ## full pipeline with tuning + validation
+
+pipeline-ingest:
+	$(RUN) ingest -c $(P_CFG)
+
+pipeline-scan-base:
+	$(RUN) scan -c $(P_CFG) --label pipeline-base
+
+pipeline-tune:
+	$(TUNE) build-benchmark --force -c $(P_CFG) --tuning-config $(P_TCFG)
+	$(TUNE) run ga --backend ray --trials $(TRIALS) --jobs $(JOBS) --name $(P_GA) -c $(P_CFG) --tuning-config $(P_TCFG)
+	$(TUNE) run indicator --backend optuna --trials $(or $(ITRIALS),300) --jobs 1 --name $(P_IND) -c $(P_CFG) --tuning-config $(P_TCFG)
+
+pipeline-adopt:
+	$(TUNE) adopt --ga-study $(P_GA) --indicator-study $(P_IND) -c $(P_CFG) --tuning-config $(P_TCFG) --out $(P_TUNED)
+
+pipeline-scan-tuned:
+	$(RUN) scan -c $(P_TUNED) --label pipeline-tuned
+
+pipeline-validate:
+	$(TUNE_LPPL) validate --label pipeline-base --tuning-config $(P_TCFG)
+	$(TUNE_LPPL) validate --label pipeline-tuned --tuning-config $(P_TCFG)
+
+pipeline-compare:
+	$(TUNE_LPPL) compare-reports $$(ls -td reports/validation/pipeline-base_* | head -1) \
+	  $$(ls -td reports/validation/pipeline-tuned_* | head -1) --out reports/pipeline_$(PIPE_ID).md

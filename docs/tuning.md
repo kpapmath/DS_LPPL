@@ -229,6 +229,10 @@ open http://localhost:5050         # compare runs, artifacts, tuned_config.yaml
 docker compose --profile tune run --rm tune export-best <study-name> --out config/tuned.yaml
 docker compose --profile tune run --rm tune evaluate-config -c config/tuned.yaml   # detector only
 make scan CONFIG=config/tuned.yaml # full rescan with the tuned settings (new run label)
+
+# Or everything end to end: base scan → both studies → adopt only if validated → tuned scan
+# → validation of both → comparison report (see validation.md §5)
+make pipeline
 ```
 
 `lppl tune run ... --name <existing study>` **resumes** a study. Optuna loads its trials from
@@ -319,3 +323,14 @@ and in optuna-dashboard. The local copies are in `data/tuning/<study>/`.
   drawdowns. The tuning framework is what makes this conclusion measurable and reproducible. Next
   steps: walk-forward splits, other event definitions (for example peak-to-trough over 6 months), and
   the denser scan (`windows.step: 5`) that is currently running.
+
+### Pipeline run (2026-11-21)
+
+`make pipeline` repeated both studies on a fresh baseline scan. The results are in
+[validation.md](validation.md) §5.
+
+* **GA study** (`ga-pipeline-20261121`): loss fell from 1.121 to 0.576, with 37 % fewer
+  evaluations. It was **adopted**.
+* **Detector study** (`indicator-pipeline-20261121`): it raised train AP from 0.156 to 0.230,
+  but 2024+ AP fell from 0.120 to 0.115. It was **rejected** by the validated-adoption rule. This
+  is the same over-fitting pattern as `indicator-optuna-v1`.

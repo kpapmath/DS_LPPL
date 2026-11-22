@@ -58,6 +58,6 @@ indicator:
     tc_margin_days: [0.0, 15.0]
     damping_min: [0.0, 1.5]
     oscillations_min: [0.0, 5.0]
-    window_min_len: {low: 125, high: 375, step: 25}
-    window_max_len: {low: 400, high: 750, step: 25}
+    window_min_len: {low: 125, high: 375, step: 10}
+    window_max_len: {low: 400, high: 750, step: 10}
     window_stride: {choices: [1, 2]}   # use every k-th stored window length

@@ -56,10 +56,21 @@ make jupyter              # open http://localhost:8888, token from .env (default
 | `02_single_fit_walkthrough` | one GA calibration step by step, fit, residuals, filter checklist |
 | `03_bubble_indicator_dashboard` | current readings, signed-confidence heatmap, per-ticker charts, case studies |
 | `04_ga_diagnostics_and_benchmark` | GA vs. differential evolution vs. Nelder–Mead, seed stability, hyperparameters |
+| `05_validation` | is the signal better than luck? skill, calibration, significance, placebo, walk-forward, null model, backtest |
 
 To execute all notebooks headless (inside the container): `make notebooks`.
 
-## 6. Tune the model (optional)
+## 6. Validate the model
+
+```bash
+make validate-quick                 # ~20 s: skill, calibration, bootstrap, placebo, timing, backtest
+make validate                       # + walk-forward re-tuning + null-model rescans (~15 min), logged to MLflow
+```
+
+The report lands in `reports/validation/<label>_<run>/`. Notebook `05_validation` presents it,
+and [docs/validation.md](docs/validation.md) explains how to read it.
+
+## 7. Tune the model (optional)
 
 ```bash
 make tune-build tune-up             # MLflow http://localhost:5050 · Optuna dashboard http://localhost:8081
@@ -68,6 +79,11 @@ make tune-ga-ray TRIALS=30 JOBS=2   # GA study with Ray Tune + ASHA (benchmark b
 ```
 
 Each study writes `data/tuning/<study>/tuned_config.yaml` and logs everything to MLflow.
+
+To run everything end to end, use `make pipeline` (about 2 h 15 min). It runs the base scan,
+then both studies, then adoption only if validated, then the tuned scan, then validation of both
+scans. The comparison goes to `reports/pipeline_<date>.md` (see
+[docs/validation.md](docs/validation.md) §5).
 **Read the validation metrics before adopting anything**: see [docs/tuning.md](docs/tuning.md) §9.
 
 ## Without Docker for the app (host Python)

@@ -1,0 +1,26 @@
+- study: ga-pipeline-20261121
+  kind: ga
+  criterion: loss
+  current: 1.1208410264149542
+  tuned: 0.5757984873593163
+  adopted: true
+  params:
+    population_size: 91
+    generations: 6
+    elite: 1
+    tournament_size: 2
+    crossover_rate: 0.980666407753164
+    blx_alpha: 0.5085303123462986
+    mutation_rate: 0.3419337587196775
+    mutation_sigma: 0.21863092229693892
+    mutation_decay: 0.9333274219981481
+    patience: 16
+    polish: true
+    polish_maxiter: 375
+- study: indicator-pipeline-20261121
+  kind: indicator
+  criterion: ap_valid
+  current: 0.11970208338134912
+  tuned: 0.11528033090302803
+  adopted: false
+  params: {}

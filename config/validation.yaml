@@ -1,0 +1,48 @@
+# Validation suite for `lppl validate` (docs/validation.md).
+# Every test is computed on a stored scan; nothing here changes the model.
+
+seed: 0
+alarm_threshold: 0.3          # confidence counted as an "alarm"
+
+# Event definition used throughout: within `horizon` trading days after the analysis date,
+# a log-drawdown from the running peak of at least k_sigma * sigma * sqrt(horizon);
+# sigma = trailing daily volatility (vol_window days, no look-ahead).
+events:
+  horizon: 63
+  k_sigma: 1.5
+  vol_window: 750
+
+# Robustness grid: the same scoring for other event definitions
+grid:
+  horizons: [21, 63, 126]
+  k_sigmas: [1.0, 1.5, 2.0]
+
+# Train / validation split (same as the tuning study) with an embargo
+split_date: 2024-01-01
+embargo_days: 63
+
+# Significance
+bootstrap: 1000               # block bootstrap replications (blocks = calendar months)
+placebo: 1000                 # circular time shifts of each ticker's confidence series
+placebo_min_shift: 126        # trading days; shifts shorter than this are not drawn
+
+# Walk-forward: for each test year, re-tune filters/windows on all earlier dates only
+# (Optuna TPE, search space from config/tuning.yaml), then score the test year.
+walk_forward:
+  first_test_year: 2021
+  trials: 100                 # per fold; skipped automatically if optuna is not installed
+
+# Null model: re-scan simulated price paths without bubble structure (stationary block
+# bootstrap of each ticker's own daily returns) and count alarms = false-positive rate.
+null_model:
+  paths: 1                    # per ticker; each path costs ~1 min on 2 CPUs
+  tickers: null               # null = all tickers of the scan
+  block_days: 20              # mean block length of the stationary bootstrap
+  scan_step: 21               # coarser than the real scan to stay cheap ...
+  window_step: 50             # ... the real scan is subset to the same grid for comparison
+
+# De-risking backtest (no look-ahead: a signal at the close of t2 applies from t2+1)
+backtest:
+  cut: 0.5                    # exposure 1 - cut while the latest analysis date is an alarm
+  cost_bps: 10                # per unit of exposure change
+  placebo_shifts: 200
