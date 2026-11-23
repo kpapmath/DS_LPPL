@@ -11,10 +11,11 @@ Contents
 2. The tests
 3. Running it
 4. Results for the current scan (run `8264c9f6`, data to 2026-11-20)
-5. End-to-end pipeline: tuned vs baseline (`make pipeline`, 2026-11-21)
-6. Burst-bubble universe and pre-registered labels (`make bubbles`, 2026-11-22)
+5. End-to-end pipeline: tuned vs baseline (2019–2026, 2026-11-21; configs retired)
+6. Burst-bubble universe and pre-registered labels (2026-11-22; configs retired)
 7. Full-period pipeline: the 12 instruments from 1987 (`make pipeline-full`, 2026-11-22)
-8. Limitations and next steps
+8. Robust variant: several seeds and persistence (pre-registered 2026-11-23)
+9. Limitations and next steps
 
 ---
 
@@ -68,7 +69,6 @@ All randomness is seeded (`seed` in the config), so a report is reproducible for
 make validate-quick        # ~20 s, app image: tests 1–6 and 9 (no null-model rescans, no MLflow)
 make validate              # ~18 min, tuning image: all 9 tests, logged to MLflow (lppl-validation)
 make validate LABEL=quick  # validate another scan label
-make bubbles               # burst-bubble universe: ingest, scan (~2 h) and full validation (§6)
 make pipeline-full         # 12 instruments over their whole history, every step (~5 h, §7)
 
 # or directly
@@ -213,7 +213,10 @@ run for months before a larger-than-usual correction ([how_the_model_works.md](h
 
 ## 5. End-to-end pipeline: tuned vs baseline
 
-`make pipeline` runs every stage in one go:
+> **Retired configs.** The configs of this run (`config/pipeline*.yaml`) were removed on 2026-11-23 to keep
+> `config/` to the files in use. They can be recovered with `git show ce9d40e:config/<file>`.
+
+The pipeline (then `make pipeline`; its successor is `make pipeline-full`, §7) ran every stage in one go:
 
 1. ingest prices;
 2. baseline scan (`pipeline-base`);
@@ -223,12 +226,7 @@ run for months before a larger-than-usual correction ([how_the_model_works.md](h
 6. full validation of both scans;
 7. `lppl compare-reports`, written to `reports/pipeline_<id>.md`.
 
-```bash
-make pipeline                       # PIPE_ID defaults to today's date; ~2 h 15 min on 2 CPUs
-make pipeline TRIALS=60 JOBS=2      # more GA trials
-```
-
-**Configuration.** The scan uses `config/pipeline.yaml`: the defaults with an analysis date every
+**Configuration.** The scan used `config/pipeline.yaml`: the defaults with an analysis date every
 10 trading days and a window every 25 days, so the scans match run `8264c9f6`. The studies use
 `config/pipeline_tuning.yaml`. The source label is `pipeline-base` and the window search step is 25.
 
@@ -295,7 +293,7 @@ episodes and few bursts. This section repeats the test where LPPLS should work b
 
 ### Design: fixed before looking at the results
 
-**Universe** (`config/bubbles.yaml`): 16 assets with data from 1985 and analysis dates from 1987.
+**Universe** (`config/bubbles.yaml`, retired: `git show ce9d40e:config/bubbles.yaml`): 16 assets with data from 1985 and analysis dates from 1987.
 
 | group | assets (bubble episodes) |
 |---|---|
@@ -577,7 +575,94 @@ Over its whole history, the 12-stock universe confirms both earlier pictures:
   large companies that mostly kept growing, so most drawdowns are ordinary corrections, which
   LPPLS does not claim to predict.
 
-## 8. Limitations and next steps
+## 8. Robust variant: several seeds and persistence
+
+**Why.** The full-period signal is real but fragile: detector tuning over-fitted three times out of
+three, the `tc` window contained the top in 0 of 78 episodes, and a window's vote depends on one GA
+run. The variant asks whether a *steadier* signal is also a *better* one, without tuning anything.
+
+### Design: fixed before the run (2026-11-23)
+
+**Variant** (`config/full_robust.yaml`, label `full-robust`): `config/full_tuned.yaml` (same 12
+instruments, analysis dates, windows, tuned GA, frozen default filters) plus a `robust:` section:
+
+* **3 GA seeds per window.** Seed 0 is the ordinary scan's fit. A window counts only if at least
+  **2 of the 3** seeds are qualified with the same sign and their `tc` agree within
+  0.25 × (median `tc` − `t2`) + 5 days. The stored fit is the agreeing seed with the lowest SSE;
+  `n_seeds_ok` records the size of the agreeing group.
+* **Persistence.** The stored confidence is the minimum of the raw confidence over the last
+  **3 analysis dates** (about 30 trading days): the signal must stay on. It is causal.
+* **Filters frozen** at the defaults (the detector tuning was never adopted). Walk-forward
+  re-tuning is therefore skipped for this run; the null model rescans the real prices with the
+  same variant so both sides use the same procedure.
+
+**Baseline:** `full-tuned` (run `0cc0bafd`), validated with the same `config/full_validation.yaml`.
+
+**Pre-registered questions and decision rule:**
+
+| | question | measure | passes if |
+|---|---|---|---|
+| P1 | is it steadier? | flicker = mean \|Δ conf\| between consecutive analysis dates; number of alarm episodes (conf ≥ 0.3 after ≥ 45 days off) | both lower than the baseline |
+| P2 | is it better on what LPPLS detects? | paired month-block bootstrap (1,000 reps, same dates) of the AP difference on `major_top_126` | difference > 0 with p < 0.05 |
+| P3 | does it still pass its own validation? | label suite (`major_top_126`, Holm) and null model | both p < 0.05 |
+
+**Adopt** the variant as the default signal if P1 and P3 pass and the P2 point estimate is ≥ 0
+(steadier at no loss of skill). Claim it is *better* only if P2 passes. Reported as secondary, with
+no decision attached: the other three labels, precision at alarm, the `tc` window test, the
+backtest and the combined model (market + lppls vs market).
+
+### Results (run `27c39baf`, 2026-11-23)
+
+The scan took 4 h 20 min on 4 cores (3.3× the ordinary scan), the validation 2 h (the null model
+rescans real and simulated prices with three seeds). Report: `reports/robust_variant.md` and
+`reports/robust_variant_analysis.md`.
+
+| | question | baseline `full-tuned` | variant `full-robust` | result |
+|---|---|---|---|---|
+| P1 | flicker (mean \|Δ conf\|) | 0.0201 | **0.0083** (−59 %) | |
+| P1 | alarm episodes | 80 | **40** | **passes** |
+| P2 | AP `major_top_126` (paired, 8,774 dates) | 0.0951 | 0.0868 | diff −0.0084, 95 % CI [−0.0154, −0.0032]: **fails, significantly worse** |
+| P3 | `major_top_126` beats placebo (Holm) | p = 0.03 | p = 0.21 (raw 0.043) | **fails** |
+| P3 | fires more on real than bubble-free prices | 4.1 % vs 3.1 %, p = 0.004 | 1.15 % vs 0.89 %, p = 0.12 | **fails** |
+
+**Decision (pre-registered rule): not adopted.** The variant is steadier, but it loses the one skill
+the baseline had.
+
+**Secondary results** (no decision attached):
+
+* `rally_end_126` AP rises from 0.2824 to 0.2864 (paired CI [+0.0004, +0.0072], one-sided
+  p = 0.017). That is not significant once the four labels are corrected for, and the label still
+  does not beat its placebo.
+* Precision at alarm 0.131 vs 0.127; `tc` window 1 of 39 vs 0 of 77; backtest 26.3 % vs 26.0 % a
+  year (buy & hold 26.5 %).
+* Combined model: market + LPPLS vs market −0.15 %, −0.20 %, −0.14 % log-loss on the three labels,
+  as for the baseline: **no gain**.
+
+### Which part did what (exploratory)
+
+Both components can be rebuilt from the stored fits, so each was evaluated alone on the same dates:
+
+| signal | flicker | episodes | AP `major_top_126` (diff vs baseline, 95 % CI) |
+|---|---|---|---|
+| baseline | 0.0201 | 80 | 0.0951 |
+| seed vote only | 0.0200 | 77 | 0.0953 (+0.0001 [−0.0015, +0.0024]) |
+| persistence only | 0.0083 | 38 | 0.0866 (−0.0086 [−0.0151, −0.0032]) |
+| both | 0.0083 | 40 | 0.0868 (−0.0084 [−0.0154, −0.0031]) |
+
+* **The seed vote changes almost nothing.** The vote kept 94 % of the baseline's qualified windows,
+  and three seeds agreed on 6,348 of the 9,429 windows with any qualified seed. With the tuned GA, the
+  optimiser is already stable; its randomness was not where the signal's fragility came from.
+* **Persistence accounts for all of the steadiness and all of the lost skill.** Requiring the signal
+  to stay on for three analysis dates removes short bursts, and those bursts carried the information
+  about major tops. The alarms that remain come later in the rally, which suits "the price will be
+  lower in six months" slightly better (`rally_end_126`) and major tops worse.
+
+**Conclusion.** The fragility of the LPPLS signal is not optimiser noise. Smoothing it trades its
+skill for steadiness. The signal's information is in short, early bursts of qualified fits, so any
+robustness step should keep them. A persistence rule is the wrong tool; pooling across instruments
+(market breadth) or modelling the residuals is the next candidate.
+
+## 9. Limitations and next steps
 
 * **Sample size.** In the 12-stock universe there are only about 20 alarm episodes, so "not
   significant" there also means "a small effect cannot be ruled out". The burst-bubble universe (§6)
@@ -601,5 +686,7 @@ Over its whole history, the 12-stock universe confirms both earlier pictures:
     volatility and drawdown features (0 of 6 pre-registered tests).
   * The momentum-controlled regression of §6 holds in-sample, with the effect about halved once
     all market features are controlled for. It does not carry over out of sample.
+* **Robustness (§8).** Three GA seeds per window and a persistence rule made the signal steadier
+  but cost its skill on major tops; not adopted.
 * **Scan density.** Results are for the 10-day / 25-day-window scan. A denser scan (`step: 5`) can be
   validated with `lppl validate --label <label>` once it finishes.

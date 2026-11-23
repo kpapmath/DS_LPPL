@@ -65,7 +65,6 @@ To execute all notebooks headless (inside the container): `make notebooks`.
 ```bash
 make validate-quick                 # ~20 s: skill, calibration, bootstrap, placebo, timing, backtest
 make validate                       # + walk-forward re-tuning + null-model rescans (~15 min), logged to MLflow
-make bubbles                        # 16 burst-bubble assets since 1985: ingest, scans, validate, combined model (~2.5 h)
 make pipeline-full                  # the 12 instruments over their whole history: every step incl. tuning (~5 h)
 ```
 
@@ -76,7 +75,7 @@ To check whether LPPLS adds anything to ordinary market features, run the walk-f
 model:
 
 ```bash
-make combine                        # needs the `bubbles` and `bubbles-short` scans (made by `make bubbles`)
+make combine                        # needs the `full-tuned` and `full-short` scans (made by `make pipeline-full`)
 ```
 
 Its report lands in `reports/combined/<label>_<run>/`. Notebook `06_combined_model` presents it,
@@ -92,10 +91,10 @@ make tune-ga-ray TRIALS=30 JOBS=2   # GA study with Ray Tune + ASHA (benchmark b
 
 Each study writes `data/tuning/<study>/tuned_config.yaml` and logs everything to MLflow.
 
-To run everything end to end, use `make pipeline` (about 2 h 15 min). It runs the base scan,
-then both studies, then adoption only if validated, then the tuned scan, then validation of both
-scans. The comparison goes to `reports/pipeline_<date>.md` (see
-[docs/validation.md](docs/validation.md) §5).
+To run everything end to end, use `make pipeline-full` (about 5 h on 4 cores). It runs the base
+scan, then both studies, then adoption only if validated, then the tuned scan, validation of both
+scans, the short-scale scan and the combined model. The comparison goes to `reports/full_<date>.md`
+(see [docs/validation.md](docs/validation.md) §7).
 **Read the validation metrics before adopting anything**: see [docs/tuning.md](docs/tuning.md) §9.
 
 ## Without Docker for the app (host Python)

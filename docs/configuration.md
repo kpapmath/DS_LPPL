@@ -14,15 +14,15 @@ There are two sources:
 |---|---|
 | `config/default.yaml` | the reference experiment: 12 instruments, scan from 2019 |
 | `config/quick.yaml` | a few minutes, for a smoke test |
-| `config/pipeline.yaml` | `make pipeline`: `default.yaml` at the standard density (analysis date every 10 days, windows every 25) |
-| `config/pipeline_tuned.yaml` (+ `.decisions.yaml`) | written by `lppl tune adopt`: the GA settings adopted by the pipeline |
-| `config/bubbles.yaml` | the **burst-bubble universe**: 16 assets with documented bubbles, data from 1985, scan from 1987, using the pipeline's adopted model settings |
-| `config/bubbles_short.yaml`, `config/pipeline_short.yaml` | the **short-scale** scans: identical to their base config except for the windows (8 windows, 40–180 days) |
 | `config/full.yaml`, `config/full_tuning.yaml`, `config/full_validation.yaml` | `make pipeline-full`: the 12 instruments over their whole history (data from 1985, scan from 1987), the tuning studies on that scan (GA benchmark windows from 1987), and validation with the walk-forward from 1995 |
-| `config/full_tuned.yaml` (+ `.decisions.yaml`), `config/full_short.yaml` | written by `make pipeline-full`: the adopted settings and their short-scale variant |
-| `config/tuning.yaml`, `config/pipeline_tuning.yaml` | tuning studies ([tuning.md](tuning.md)) |
+| `config/full_tuned.yaml` (+ `.decisions.yaml`, the adoption record), `config/full_short.yaml` | written by `make pipeline-full`: the adopted settings and their **short-scale** variant (8 windows, 40–180 days) |
+| `config/full_robust.yaml` | the **robust variant** of `full_tuned.yaml`: 3 GA seeds per window with a majority vote, and persistence ([validation.md](validation.md) §8) |
+| `config/tuning.yaml` | tuning studies ([tuning.md](tuning.md)) |
 | `config/validation.yaml` | validation suite (`lppl validate`); see below |
 | `config/combined.yaml` | refined signals and combined model (`lppl combine`); see below |
+
+The configs of the 2019+ pipeline (`pipeline*.yaml`) and the burst-bubble universe (`bubbles*.yaml`)
+were retired on 2026-11-23; `git show ce9d40e:config/<file>` recovers them.
 
 Instrument fields: `ticker`, `name`, `group` (`index`, `mag7`, `extra` or `bubble`) and
 `asset_type` (`index`, `equity`, `etf`, `crypto` or `commodity`).
@@ -109,6 +109,19 @@ CLI overrides: `lppl scan --start --end --step --n-jobs -t T1,T2 --label NAME`.
 | `mutation_sigma`, `mutation_decay`, `mutation_sigma_min` | `0.15`, `0.95`, `0.005` | step size in unit-cube coordinates, decaying geometrically |
 | `patience`, `tol` | `10`, `1e-6` | early stopping on relative improvement |
 | `polish`, `polish_maxiter` | `true`, `200` | Nelder–Mead refinement of the best individual |
+
+### `robust` (robust variant, off by default)
+
+| Key | Default | `full_robust.yaml` | Meaning |
+|---|---|---|---|
+| `seeds` | `1` | `3` | independent GA fits per window; seed 0 is the ordinary scan's fit |
+| `min_agree` | `1` | `2` | a window counts only if this many seeds are qualified with the same sign and agree on `tc` |
+| `tc_agree`, `tc_agree_days` | `0.25`, `5.0` | same | `tc` agreement: within `tc_agree` × (median `tc` − `t2`) + `tc_agree_days` of the seeds' median |
+| `persistence` | `1` | `3` | stored confidence = minimum of the raw confidence over the last N analysis dates (causal) |
+
+The scan cost grows linearly with `seeds`. A robust run cannot be requalified (`lppl requalify`
+refuses it), and `lppl validate` skips its walk-forward re-tuning, because both recompute the
+qualification from single stored fits.
 
 Filters are applied after fitting. To change them for existing runs without refitting, use
 `lppl requalify -c config/default.yaml [--run-id ID]`. The run's stored config is updated.

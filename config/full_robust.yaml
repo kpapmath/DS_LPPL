@@ -1,9 +1,11 @@
-# Tuned config written by `lppl tune adopt` (policy: validated)
-# ga study ga-pipeline-20261121: loss 1.1208410264149542 -> 0.5757984873593163: adopted
-# indicator study indicator-pipeline-20261121: ap_valid 0.11970208338134912 -> 0.11528033090302803: NOT adopted, current values kept
+# ROBUST VARIANT of the full-period scan (docs/validation.md §8, pre-registered 2026-11-23):
+# config/full_tuned.yaml (same universe, dates, windows, tuned GA, frozen default filters) plus
+#   * 3 GA seeds per window; a window counts only if >= 2 seeds qualify with the same sign and
+#     their tc agree within 0.25 * (tc - t2) + 5 days;
+#   * persistence: the stored confidence is the minimum over the last 3 analysis dates (~30 days).
 seed: 42
 data:
-  start: '1995-01-01'
+  start: '1985-01-01'
   end: null
   price_field: adj_close
   snapshot_dir: data/snapshots
@@ -57,7 +59,7 @@ data:
     group: extra
     asset_type: equity
 scan:
-  start: '2019-01-01'
+  start: '1987-01-01'
   end: null
   step: 10
   n_jobs: -1
@@ -101,3 +103,9 @@ ga:
   tol: 1.0e-06
   polish: true
   polish_maxiter: 375
+robust:
+  seeds: 3
+  min_agree: 2
+  tc_agree: 0.25
+  tc_agree_days: 5.0
+  persistence: 3

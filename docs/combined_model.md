@@ -84,13 +84,16 @@ to the previous one:
 ## 3. Running it
 
 ```bash
-make bubbles-short     # short-scale scan of the burst-bubble universe (~25 min on 4 cores)
-make combine           # lppl combine --label bubbles --short-label bubbles-short (~2 min)
-make combine-pipeline  # the same for the 12-stock universe (short scan ~7 min, then the model)
+make pipeline-full     # every step, ending with the short-scale scan and the combined model
+make combine           # only the model: lppl combine --label full-tuned --short-label full-short --first-test-year 1995
 
 # or directly
-lppl combine --label bubbles --short-label bubbles-short [--first-test-year 1995] [--out DIR]
+lppl combine --label full-tuned --short-label full-short [--first-test-year 1995] [--out DIR]
 ```
+
+The results in §4 and §5 come from the burst-bubble and 2019+ scans, whose configs
+(`bubbles*.yaml`, `pipeline*.yaml`) were retired on 2026-11-23; recover them with
+`git show ce9d40e:config/<file>`.
 
 **Output** goes to `reports/combined/<label>_<run>/`:
 
@@ -298,4 +301,4 @@ out-of-sample value to ordinary market features.**
   choosing them on this data would be over-fitting.
 * **The residual test** is a plain Dickey–Fuller test. Lin et al. (2014) use stricter
   Ornstein–Uhlenbeck and Lomb-periodogram tests, which are not implemented.
-* **The burst-bubble universe was selected for having bubbles** (validation.md §8).
+* **The burst-bubble universe was selected for having bubbles** (validation.md §9).

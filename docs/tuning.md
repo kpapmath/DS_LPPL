@@ -231,8 +231,8 @@ docker compose --profile tune run --rm tune evaluate-config -c config/tuned.yaml
 make scan CONFIG=config/tuned.yaml # full rescan with the tuned settings (new run label)
 
 # Or everything end to end: base scan → both studies → adopt only if validated → tuned scan
-# → validation of both → comparison report (see validation.md §5)
-make pipeline
+# → validation of both → comparison report (see validation.md §7)
+make pipeline-full
 ```
 
 `lppl tune run ... --name <existing study>` **resumes** a study. Optuna loads its trials from
@@ -327,7 +327,7 @@ and in optuna-dashboard. The local copies are in `data/tuning/<study>/`.
 
 ### Pipeline run (2026-11-21)
 
-`make pipeline` repeated both studies on a fresh baseline scan. The results are in
+The 2019+ pipeline (configs retired, in commit `ce9d40e`) repeated both studies on a fresh baseline scan. The results are in
 [validation.md](validation.md) §5.
 
 * **GA study** (`ga-pipeline-20261121`): loss fell from 1.121 to 0.576, with 37 % fewer

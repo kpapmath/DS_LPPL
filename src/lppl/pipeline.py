@@ -109,6 +109,9 @@ def requalify(cfg: AppConfig, engine: Engine, run_id: str) -> int:
     fits = db.load_fits(engine, run_id)
     if fits.empty:
         raise RuntimeError(f"run {run_id} has no fits")
+    if "n_seeds_ok" in fits and fits["n_seeds_ok"].notna().any():
+        raise RuntimeError(f"run {run_id} uses the robust variant: its qualification combines several "
+                           "seeds and cannot be recomputed from the stored fits; rescan instead")
     fits["t1"] = fits["t1"].dt.date
     fits["t2"] = fits["t2"].dt.date
     fits["tc_date"] = fits["tc_date"].dt.date

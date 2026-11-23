@@ -1,5 +1,5 @@
-# Tuning settings for `make pipeline-full` (copy of config/pipeline_tuning.yaml; source scan =
-# full-base, GA benchmark windows drawn from 1987 onwards).
+# Tuning settings for `make pipeline-full` (config/tuning.yaml with source scan =
+# full-base, the window search aligned to the 25-day grid and GA benchmark windows from 1987 onwards).
 # Hyperparameter-tuning studies (see docs/tuning.md).
 # Search-space syntax per parameter:
 #   [low, high]                 uniform (int if both bounds are ints, else float)

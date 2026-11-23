@@ -99,14 +99,23 @@ combined model run on the host (`.venv`, all cores). The tuning studies and `ado
 line per step into the log, so an interrupted run can be resumed from the failed step with the same
 `PIPE_ID` (the run of 2026-11-22 was resumed at the tuned validation).
 
-## Burst-bubble universe and combined model
+## Robust variant
 
 ```bash
-make bubbles   # ingest the 16 assets (from 1985), long scan (~1 h 45 min on 4 cores),
-               # full validation (~23 min), short-scale scan (~25 min), combined model (~2 min)
-# or step by step
-make bubbles-ingest bubbles-scan bubbles-validate bubbles-short combine
+bash scripts/robust_variant.sh            # scan (~4.5 h on 4 cores), validate, compare, combine, analyse
+bash scripts/robust_variant.sh validate   # resume from a step
 ```
+
+The extra seeds use their own RNG streams (the window key plus the seed number), so seed 0
+reproduces the ordinary scan exactly and the variant is as deterministic as the main scan.
+`scripts/robust_compare.py` writes the pre-registered comparison to
+`reports/robust_variant_analysis.{md,json}`.
+
+## Short-scale scan and combined model
+
+Both are the last two steps of `make pipeline-full`; `make combine` reruns only the model.
+The burst-bubble universe of validation.md §6 used `config/bubbles.yaml` and
+`config/bubbles_short.yaml`, retired on 2026-11-23 (`git show ce9d40e:config/<file>`).
 
 * **Scans** are deterministic in the same way as the main scan: the per-window seeds depend only on
   the seed, ticker, date and window length. The short scan's analysis dates are aligned with the
@@ -115,9 +124,8 @@ make bubbles-ingest bubbles-scan bubbles-validate bubbles-short combine
   logistic fits are deterministic and the bootstrap is seeded. Outputs go to
   `reports/combined/<label>_<run>/`, including the full feature table (`features.csv`), so
   results can be re-analysed without the database.
-* **Ingestion overwrites snapshots.** Running `make bubbles-ingest` rewrites the snapshot CSVs of
-  tickers shared with the main universe (^GSPC, ^IXIC, NVDA, TSLA) with the longer history from
-  1985. Scans of `config/default.yaml` still start from their own `data.start`, so their results
+* **Ingestion overwrites snapshots.** Ingesting `config/full.yaml` rewrites the snapshot CSVs of
+  the main universe with the longer history from 1985. Scans of `config/default.yaml` still start from their own `data.start`, so their results
   are unaffected. To archive the exact inputs, keep `data/snapshots/` together with the
   `ingestion_log` sha256 values.
 
@@ -126,10 +134,10 @@ Run labels used in the docs:
 | label | config | contents |
 |---|---|---|
 | `default` | `config/default.yaml` | reference scan, 12 instruments |
-| `pipeline-base` / `pipeline-tuned` | `config/pipeline.yaml` / `config/pipeline_tuned.yaml` | `make pipeline` |
-| `pipeline-short` | `config/pipeline_short.yaml` | short-scale scan of the 12 instruments |
-| `bubbles` / `bubbles-short` | `config/bubbles.yaml` / `config/bubbles_short.yaml` | burst-bubble universe, long and short scale |
+| `pipeline-base` / `pipeline-tuned` / `pipeline-short` | `pipeline*.yaml` (retired, in commit `ce9d40e`) | 2019+ pipeline, validation.md §5 |
+| `bubbles` / `bubbles-short` | `bubbles*.yaml` (retired, in commit `ce9d40e`) | burst-bubble universe, validation.md §6 |
 | `full-base` / `full-tuned` / `full-short` | `config/full.yaml` / `config/full_tuned.yaml` / `config/full_short.yaml` | `make pipeline-full`: the 12 instruments from 1987 |
+| `full-robust` | `config/full_robust.yaml` | robust variant (3 seeds, persistence), validation.md §8 |
 
 ## Run bookkeeping
 

@@ -38,18 +38,74 @@ class WindowConfig:
 
 
 @dataclass(frozen=True)
+class RobustConfig:
+    """Robust variant of the confidence (docs/validation.md §8). The defaults switch it off.
+
+    * ``seeds``: independent GA fits per window (seed 0 is the ordinary scan's fit).
+    * ``min_agree``: a window counts only if at least this many seeds are qualified with the
+      same sign, and their ``tc`` lie within ``tc_agree * (median tc - t2) + tc_agree_days``
+      of their median.
+    * ``persistence``: the stored confidence is the minimum of the raw confidence over the last
+      ``persistence`` analysis dates (the signal must stay on; causal).
+    """
+
+    seeds: int = 1
+    min_agree: int = 1
+    tc_agree: float = 0.25
+    tc_agree_days: float = 5.0
+    persistence: int = 1
+
+    def __post_init__(self):
+        if self.seeds < 1 or not 1 <= self.min_agree <= self.seeds or self.persistence < 1:
+            raise ValueError("invalid robust configuration")
+
+    @property
+    def enabled(self) -> bool:
+        return self.seeds > 1 or self.persistence > 1
+
+
+@dataclass(frozen=True)
 class ScanSettings:
     windows: WindowConfig = field(default_factory=WindowConfig)
     bounds: SearchBounds = field(default_factory=SearchBounds)
     filters: FilterConfig = field(default_factory=FilterConfig)
     ga: GAConfig = field(default_factory=GAConfig)
     method: str = "ga"
+    robust: RobustConfig = field(default_factory=RobustConfig)
 
 
-def window_rng(master_seed: int, ticker: str, t2: pd.Timestamp, length: int) -> np.random.Generator:
-    """Deterministic, order-independent RNG for one (ticker, t2, window) task."""
+def window_rng(master_seed: int, ticker: str, t2: pd.Timestamp, length: int,
+               replica: int = 0) -> np.random.Generator:
+    """Deterministic, order-independent RNG for one (ticker, t2, window) task. Replica 0 is
+    the ordinary scan; replicas > 0 are the extra seeds of the robust variant."""
     key = [int(master_seed), zlib.crc32(ticker.encode()), int(pd.Timestamp(t2).toordinal()), int(length)]
+    if replica:
+        key.append(int(replica))
     return np.random.default_rng(np.random.SeedSequence(key))
+
+
+def robust_vote(fits: list, oks: list[bool], rc: RobustConfig) -> tuple[int | None, bool, int]:
+    """Combine the seed fits of one window. Returns (index of the fit to store, robust
+    qualification, number of seeds in the agreeing majority).
+
+    The agreeing set is the largest group of qualified seeds of one sign whose ``tc`` lie
+    within the tolerance of their median. The stored fit is its lowest-SSE member (seed 0 if
+    no seed qualifies)."""
+    best: list[int] = []
+    for sign in (1, -1):
+        idx = [i for i, (f, ok) in enumerate(zip(fits, oks, strict=True)) if ok and f.sign == sign]
+        if not idx:
+            continue
+        tcs = np.array([fits[i].tc for i in idx])
+        med = float(np.median(tcs))
+        tol = rc.tc_agree * max(med - fits[idx[0]].t2, 0.0) + rc.tc_agree_days / 365.25
+        agree = [i for i, tc in zip(idx, tcs, strict=True) if abs(tc - med) <= tol]
+        if len(agree) > len(best):
+            best = agree
+    if not best:
+        return 0, False, 0
+    pick = min(best, key=lambda i: fits[i].sse)
+    return pick, len(best) >= rc.min_agree, len(best)
 
 
 def scan_date(
@@ -67,10 +123,16 @@ def scan_date(
     for n in settings.windows.lengths(available=end_pos + 1):
         sl = slice(end_pos + 1 - n, end_pos + 1)
         t, y = t_all[sl], log_price[sl]
-        res = fit_window(t, y, bounds=settings.bounds, method=settings.method,
-                         ga_config=settings.ga, rng=window_rng(master_seed, ticker, t2_date, n))
+        rc = settings.robust
+        runs = [fit_window(t, y, bounds=settings.bounds, method=settings.method, ga_config=settings.ga,
+                           rng=window_rng(master_seed, ticker, t2_date, n, k)) for k in range(rc.seeds)]
+        oks = [bool(check(r.fit, settings.filters)["qualified"]) for r in runs]
+        if rc.seeds > 1:
+            pick, qualified, n_ok = robust_vote([r.fit for r in runs], oks, rc)
+        else:
+            pick, qualified, n_ok = 0, oks[0], None
+        res = runs[pick]
         fit = res.fit
-        conds = check(fit, settings.filters)
         records.append({
             "ticker": ticker,
             "t1": dates[sl.start].date(),
@@ -85,11 +147,12 @@ def scan_date(
             "rmse": fit.rmse,
             "damping": fit.damping,
             "n_osc": fit.n_oscillations,
-            "qualified": bool(conds["qualified"]),
+            "qualified": bool(qualified),
             "sign": fit.sign,
             "generations": res.generations,
-            "n_evals": res.n_evals,
-            "elapsed_ms": res.elapsed_ms,
+            "n_evals": int(sum(r.n_evals for r in runs)),
+            "elapsed_ms": float(sum(r.elapsed_ms for r in runs)),
+            **({"n_seeds_ok": n_ok} if n_ok is not None else {}),
         })
     return records
 
@@ -140,6 +203,17 @@ def aggregate(fits: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols)
 
 
+def apply_persistence(ind: pd.DataFrame, periods: int) -> pd.DataFrame:
+    """Replace pos_conf / neg_conf by their minimum over the last ``periods`` analysis dates of
+    each ticker (the current one included). Causal: uses no later date."""
+    if periods <= 1 or ind.empty:
+        return ind
+    out = ind.sort_values(["ticker", "date"]).copy()
+    for c in ("pos_conf", "neg_conf"):
+        out[c] = out.groupby("ticker")[c].transform(lambda s: s.rolling(periods, min_periods=1).min())
+    return out.reset_index(drop=True)
+
+
 def scan_dates_positions(dates: pd.DatetimeIndex, start, end, step: int, min_history: int) -> list[int]:
     """Positions of analysis dates: every ``step`` trading days in [start, end], counted
     back from the last eligible date so the most recent day is always included."""
@@ -180,4 +254,4 @@ def scan_series(
     jobs = (delayed(scan_date)(dates, logp, p, settings, master_seed, ticker) for p in positions)
     results = Parallel(n_jobs=n_jobs, verbose=5 if progress else 0)(jobs)
     fits = pd.DataFrame([r for batch in results for r in batch])
-    return fits, aggregate(fits)
+    return fits, apply_persistence(aggregate(fits), settings.robust.persistence)

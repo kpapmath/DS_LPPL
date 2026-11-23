@@ -382,16 +382,27 @@ def null_model(fits: pd.DataFrame, prices: pd.DataFrame, run_cfg: AppConfig, s: 
     win = WindowConfig(min_len=run_cfg.windows.min_len, max_len=run_cfg.windows.max_len,
                        step=ns.window_step)
     settings = ScanSettings(windows=win, bounds=run_cfg.bounds, filters=run_cfg.filters,
-                            ga=run_cfg.ga, method=run_cfg.scan.method)
-    # real detector on the same window lengths (subset of the stored grid)
-    data = build_detection_data(fits, prices, IndicatorStudySettings(space={}))
-    lengths = win.lengths()
-    stored = set(np.unique(data.window_len))
-    if not set(lengths) <= stored:
-        raise ValueError(f"null-model windows {lengths} are not all in the stored scan")
-    real_conf, _ = confidence(data, run_cfg.filters, win.min_len, win.max_len, win.step)
-    real = data.groups.assign(conf=real_conf)
+                            ga=run_cfg.ga, method=run_cfg.scan.method, robust=run_cfg.robust)
     tickers = ns.tickers or sorted(fits["ticker"].unique())
+    if run_cfg.robust.enabled:
+        # The robust confidence cannot be rebuilt from the stored fits (it combines seeds and
+        # dates), so the real prices are rescanned with exactly the null paths' settings.
+        parts = []
+        for ticker in tickers:
+            _, ind = scan_series(prices[ticker].dropna(), ticker, settings, start=run_cfg.scan.start,
+                                 end=run_cfg.scan.end, step=ns.scan_step, master_seed=run_cfg.seed,
+                                 n_jobs=n_jobs)
+            parts.append(ind.rename(columns={"pos_conf": "conf"}))
+        real = pd.concat(parts, ignore_index=True)
+    else:
+        # real detector on the same window lengths (subset of the stored grid)
+        data = build_detection_data(fits, prices, IndicatorStudySettings(space={}))
+        lengths = win.lengths()
+        stored = set(np.unique(data.window_len))
+        if not set(lengths) <= stored:
+            raise ValueError(f"null-model windows {lengths} are not all in the stored scan")
+        real_conf, _ = confidence(data, run_cfg.filters, win.min_len, win.max_len, win.step)
+        real = data.groups.assign(conf=real_conf)
     rows = []
     for ticker in tickers:
         px = prices[ticker].dropna()
@@ -523,7 +534,10 @@ def run_validation(engine, run_id: str, label: str = "", settings: ValidationSet
                                           for p in rep.placebo.values()])
     rep.tables["grid"] = event_grid(ind, prices, s)
     rep.tables["timing"] = timing(ev, prices, s.alarm_threshold)
-    if run_walk_forward:
+    if run_walk_forward and run_cfg.robust.enabled:
+        log.warning("walk-forward re-tuning skipped: it requalifies stored fits, which the robust "
+                    "variant does not allow (its filters are frozen by design)")
+    elif run_walk_forward:
         rep.tables["walk_forward"] = walk_forward(fits, prices, run_cfg, s, space)
     if run_null and s.null_model.paths > 0:
         rep.tables["null_model"] = null_model(fits, prices, run_cfg, s, n_jobs=n_jobs)

@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from lppl.model.calibrate import SearchBounds
 from lppl.model.filters import FilterConfig
-from lppl.model.indicator import ScanSettings, WindowConfig
+from lppl.model.indicator import RobustConfig, ScanSettings, WindowConfig
 from lppl.optim.ga import GAConfig
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -54,10 +54,11 @@ class AppConfig(BaseModel):
     bounds: SearchBounds = SearchBounds()
     filters: FilterConfig = FilterConfig()
     ga: GAConfig = GAConfig()
+    robust: RobustConfig = RobustConfig()
 
     def scan_settings(self) -> ScanSettings:
         return ScanSettings(windows=self.windows, bounds=self.bounds, filters=self.filters,
-                            ga=self.ga, method=self.scan.method)
+                            ga=self.ga, method=self.scan.method, robust=self.robust)
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:

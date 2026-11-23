@@ -42,8 +42,8 @@ Yahoo Finance ──► lppl ingest ──► PostgreSQL ◄── lppl scan ◄
    ([docs/tuning.md](docs/tuning.md)).
 7. **Validate** accuracy with `lppl validate`: significance tests, a placebo, walk-forward,
    bubble-free null model, a backtest, and four pre-registered event labels with a Holm
-   correction ([docs/validation.md](docs/validation.md)). This is run on the 12-stock universe and on
-   16 assets with documented burst bubbles since 1987 (`make bubbles`).
+   correction ([docs/validation.md](docs/validation.md)). This was run on the 12-stock universe and on
+   16 assets with documented burst bubbles since 1987.
 8. **Combine**: refined LPPLS signals (short scale, scale agreement, `tc` clustering, residual test,
    Lagrange window) and a walk-forward model that tests whether LPPLS adds anything to ordinary
    market features (`lppl combine`, [docs/combined_model.md](docs/combined_model.md)).
@@ -56,6 +56,8 @@ Yahoo Finance ──► lppl ingest ──► PostgreSQL ◄── lppl scan ◄
     bubble-free prices;
   * it does not anticipate ordinary drawdowns, does not time the top, and adds nothing to a
     market-feature forecast.
+  * a robust variant (3 GA seeds per window, persistence) is steadier but loses the major-top
+    skill, so it was not adopted ([docs/validation.md](docs/validation.md) §8).
 * **Burst-bubble assets:**
   * an LPPLS alarm roughly doubles the chance of a large fall within 3–6 months;
   * the signal passes placebo, null-model and calibration tests;
@@ -71,7 +73,7 @@ Yahoo Finance ──► lppl ingest ──► PostgreSQL ◄── lppl scan ◄
 | `src/lppl/data/` | `yahoo.py` (download, validation, snapshots), `db.py` (schema and data access) |
 | `src/lppl/` | `pipeline.py`, `cli.py` (`lppl …`), `config.py`, `viz.py`, `validation.py` (`lppl validate`), `labels.py`, `signals.py`, `combined.py` (`lppl combine`) |
 | `src/lppl/tuning/` | tuning studies: `settings.py` (search spaces), `ga_benchmark.py`, `detection.py`, `runners.py` (Optuna / Ray), `tracking.py` (MLflow), `cli.py` (`lppl tune …`) |
-| `config/` | `default.yaml` (full experiment), `quick.yaml` (a few minutes), `pipeline*.yaml` (`make pipeline`), `bubbles*.yaml` (burst-bubble universe, long and short scale), `tuning.yaml`, `validation.yaml`, `combined.yaml` (see [docs/configuration.md](docs/configuration.md)) |
+| `config/` | `default.yaml` (full experiment), `quick.yaml` (a few minutes), `full*.yaml` (`make pipeline-full`: full period, tuned and short-scale variants), `tuning.yaml`, `validation.yaml`, `combined.yaml` (see [docs/configuration.md](docs/configuration.md)) |
 | `notebooks/` | 01 data overview · 02 single-fit walkthrough · 03 dashboard · 04 GA benchmark · 05 validation · 06 combined model |
 | `tests/` | unit tests (no network or DB needed) and integration tests (`-m integration`) |
 | `docs/` | methodology, model presentation, architecture, data dictionary, configuration, reproducibility |
@@ -114,7 +116,7 @@ lppl export --out reports/reference.csv
 lppl verify --reference reports/reference.csv
 lppl validate [--label default] [--null-paths N] [--no-walk-forward]
 lppl compare-reports DIR1 DIR2 [--out file.md]
-lppl combine --label bubbles --short-label bubbles-short [--first-test-year 1995]
+lppl combine --label full-tuned --short-label full-short [--first-test-year 1995]
 lppl fit-one NVDA --end 2024-06-18 --window 500
 
 lppl tune init-stores | build-benchmark

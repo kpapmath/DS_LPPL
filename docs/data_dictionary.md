@@ -78,7 +78,8 @@ Deleting a run cascades to these rows.
 | `n_osc` | float | `(ω/π)·ln((tc−t1)/(tc−t2))` |
 | `qualified` | bool | passes all filters (`docs/methodology.md` §6) |
 | `sign` | smallint | `+1` if B<0 (bubble), `−1` if B>0 (anti-bubble) |
-| `generations`, `n_evals`, `elapsed_ms` | | optimiser diagnostics |
+| `generations`, `n_evals`, `elapsed_ms` | | optimiser diagnostics (`n_evals`, `elapsed_ms` summed over all seeds in a robust run) |
+| `n_seeds_ok` | smallint, nullable | robust variant only: number of seeds in the agreeing group (`qualified` = at least `robust.min_agree`); NULL for ordinary runs |
 
 ## `bubble_indicator`
 

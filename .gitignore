@@ -16,8 +16,8 @@ docs/figures
 .env
 
 # Data (snapshots are reproducible artefacts; keep them out of git by default)
-data/
-reports/
+/data/
+/reports/
 
 # build artefacts
 build/

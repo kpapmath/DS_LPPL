@@ -1,5 +1,5 @@
-# FULL-PERIOD pipeline (`make pipeline-full`, docs/validation.md §7): the 12-instrument universe of
-# config/pipeline.yaml over its entire available history. Data from 1985, analysis dates from 1987
+# FULL-PERIOD pipeline (`make pipeline-full`, docs/validation.md §7): the 12 instruments of
+# config/default.yaml over their entire available history. Data from 1985, analysis dates from 1987
 # (each instrument from its own listing date). Standard density: an analysis date every 10 trading
 # days, 26 windows 125..750 step 25. Model settings = defaults (the baseline).
 seed: 42

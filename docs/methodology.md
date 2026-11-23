@@ -349,7 +349,7 @@ profile-likelihood intervals for `tc` (Filimonov, Demos & Sornette 2017).
    * **no out-of-sample gain** over market features in a walk-forward forecast (combined_model.md §4). False positives are expected
    (strong secular trends such as NVDA 2023–24 can look like a bubble for long stretches).
 5. **Non-stationarity of the universe.** Survivorship bias: today's Magnificent Seven are
-   *ex post* winners. The burst-bubble universe (`config/bubbles.yaml`) has the opposite selection:
+   *ex post* winners. The burst-bubble universe (validation.md §6) has the opposite selection:
    it was chosen *for* having bubbles. The indicator on these names should not be read as an unbiased estimate
    of how often bubbles occur.
 6. **Data issues.** Yahoo Finance revises adjusted prices when dividends and splits are applied,
